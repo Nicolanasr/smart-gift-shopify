@@ -1,0 +1,362 @@
+import { useLoaderData } from "react-router";
+import { authenticate } from "../shopify.server";
+
+export const loader = async ({ request }: any) => {
+    const { admin } = await authenticate.admin(request);
+
+    // Check 1: Gift Product
+    const productResponse = await admin.graphql(
+        `#graphql
+        query findGiftProduct {
+            products(first: 10, query: "title:*Gift*") {
+                edges {
+                    node {
+                        id
+                        title
+                        handle
+                        status
+                    }
+                }
+            }
+        }`
+    );
+    const productJson = await productResponse.json();
+    const products = productJson.data?.products?.edges?.map((edge: any) => edge.node) || [];
+    const giftProduct = products.length > 0 ? products[0] : null;
+
+    // Check 2: Theme Settings (App Embed Status)
+    let appEmbedEnabled = false;
+    let productLinked = false;
+    let activeThemeName = "";
+    const debugLogs: string[] = [];
+
+    try {
+        debugLogs.push("Fetching recent themes...");
+        // Get Themes (Main + Drafts) - Sort locally since sortKey isn't supported
+        const themeResponse = await admin.graphql(
+            `#graphql
+            query getThemes {
+                themes(first: 10) {
+                    edges {
+                        node {
+                            id
+                            name
+                            role
+                            updatedAt
+                        }
+                    }
+                }
+            }`
+        );
+        const themeJson = await themeResponse.json();
+
+        let themes = themeJson.data?.themes?.edges?.map((e: any) => e.node) || [];
+
+        // Sort by updatedAt descending
+        if (themes.length > 0 && themes[0].updatedAt) {
+            themes.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        }
+
+        // Take top 3
+        themes = themes.slice(0, 3);
+
+        debugLogs.push(`Found ${themes.length} recent themes: ${themes.map((t: any) => t.name).join(", ")}`);
+
+        // Check each theme until we find it enabled
+        for (const theme of themes) {
+            debugLogs.push(`Checking theme: ${theme.name} (${theme.role})`);
+            const assetResponse = await admin.graphql(
+                `#graphql
+                query getThemeSettings($id: ID!) {
+                    theme(id: $id) {
+                        files(filenames: ["config/settings_data.json"]) {
+                            nodes {
+                                body {
+                                    ... on OnlineStoreThemeFileBodyText {
+                                        content
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }`,
+                { variables: { id: theme.id } }
+            );
+            const assetJson = await assetResponse.json();
+            // Parse response from "files" query
+            const files = assetJson.data?.theme?.files?.nodes || [];
+            const settingsString = files.length > 0 ? files[0].body?.content : null;
+
+            if (settingsString) {
+                // Strip comments (/* ... */ and // ...) from JSON before parsing
+                const jsonWithCommentsStripped = settingsString.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m: string, g: string) => g ? "" : m);
+
+                let settingsData;
+                try {
+                    settingsData = JSON.parse(jsonWithCommentsStripped);
+                } catch (e) {
+                    debugLogs.push(`  ❌ Error parsing JSON: ${e}`);
+                    debugLogs.push(`  First 100 chars: ${jsonWithCommentsStripped.substring(0, 100)}...`);
+                    continue; // Skip this theme if JSON is invalid
+                }
+
+                const blocks = settingsData.current?.blocks || {};
+
+                // Find our App Embed Block (look for "gift_globals" in the type)
+                const embedBlockId = Object.keys(blocks).find(key =>
+                    blocks[key].type && blocks[key].type.includes("gift_globals")
+                );
+
+                if (embedBlockId) {
+                    const block = blocks[embedBlockId];
+                    debugLogs.push(`  Found App Embed Block: ${embedBlockId} (Disabled: ${block.disabled})`);
+
+                    // In Shopify Theme settings, "disabled": true means off. If undefined/false, it's on.
+                    if (block.disabled !== true) {
+                        appEmbedEnabled = true;
+                        activeThemeName = theme.name;
+
+                        // Check if a product is linked in settings
+                        if (block.settings && block.settings.gift_product) {
+                            productLinked = true;
+                            debugLogs.push(`  Product Linked: Yes (${block.settings.gift_product})`);
+                        } else {
+                            debugLogs.push(`  Product Linked: No`);
+                        }
+
+                        debugLogs.push(`  ✅ ENABLED in this theme!`);
+                        // If we found it enabled, stop checking other themes
+                        break;
+                    } else {
+                        debugLogs.push(`  ❌ Block is explicitly disabled.`);
+                    }
+                } else {
+                    debugLogs.push(`  ⚠️ App Embed block NOT found in settings_data.json`);
+                }
+            } else {
+                debugLogs.push(`  ❌ Could not fetch settings_data.json`);
+            }
+        }
+    } catch (e) {
+        console.error("Error checking theme settings:", e);
+        debugLogs.push(`Error: ${e}`);
+    }
+
+    return {
+        giftProductFound: !!giftProduct,
+        giftProduct,
+        appEmbedEnabled,
+        productLinked,
+        activeThemeName,
+        debugLogs
+    };
+};
+
+export default function Guide() {
+    const { giftProductFound, giftProduct, appEmbedEnabled, productLinked, activeThemeName, debugLogs } = useLoaderData<typeof loader>();
+
+    return (
+        <s-page heading="Setup Guide & Onboarding">
+            <s-layout>
+                <s-layout-section>
+                    <s-card>
+                        <div style={{ padding: "20px" }}>
+                            <h2 style={{ fontSize: "20px", fontWeight: "600", marginBottom: "16px" }}>👋 Welcome to Smart Gift!</h2>
+                            <p style={{ marginBottom: "20px", lineHeight: "1.5", color: "#4b5563" }}>
+                                Follow this interactive guide to get the Gift Widget up and running.
+                                Complete the checklist below to ensure everything is configured correctly.
+                            </p>
+
+                            <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                                <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", fontWeight: "600" }}>🚀 Setup Checklist</h3>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+
+                                    {/* Step 1 Status */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                        <div style={{
+                                            width: "24px", height: "24px", borderRadius: "50%",
+                                            background: appEmbedEnabled ? "#dcfce7" : "#e2e8f0",
+                                            color: appEmbedEnabled ? "#166534" : "#64748b",
+                                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px"
+                                        }}>{appEmbedEnabled ? "✓" : "1"}</div>
+                                        <div style={{ flex: 1 }}>
+                                            <span>Enable "Smart Gift Globals" App Embed</span>
+                                            {appEmbedEnabled && <div style={{ fontSize: "12px", color: "#166534" }}>Detected in: {activeThemeName}</div>}
+                                        </div>
+                                        {appEmbedEnabled ? (
+                                            <span style={{ fontSize: "12px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px" }}>Enabled</span>
+                                        ) : (
+                                            <span style={{ fontSize: "12px", background: "#dbeafe", color: "#1e40af", padding: "2px 8px", borderRadius: "12px" }}>Action Required</span>
+                                        )}
+                                    </div>
+
+                                    {/* Step 2 Status (Interactive) */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                        <div style={{
+                                            width: "24px", height: "24px", borderRadius: "50%",
+                                            background: giftProductFound ? "#dcfce7" : "#e2e8f0",
+                                            color: giftProductFound ? "#166534" : "#64748b",
+                                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px"
+                                        }}>{giftProductFound ? "✓" : "2"}</div>
+                                        <div style={{ flex: 1 }}>
+                                            <span>Create a "Gift Service" Dummy Product</span>
+                                            {giftProductFound && <div style={{ fontSize: "12px", color: "#166534" }}>Found: {giftProduct.title} ({giftProduct.status})</div>}
+                                        </div>
+                                        {giftProductFound ? (
+                                            <span style={{ fontSize: "12px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px" }}>Completed</span>
+                                        ) : (
+                                            <span style={{ fontSize: "12px", background: "#fee2e2", color: "#991b1b", padding: "2px 8px", borderRadius: "12px" }}>Not Found</span>
+                                        )}
+                                    </div>
+
+                                    {/* Step 3 Status */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                        <div style={{
+                                            width: "24px", height: "24px", borderRadius: "50%",
+                                            background: productLinked ? "#dcfce7" : "#e2e8f0",
+                                            color: productLinked ? "#166534" : "#64748b",
+                                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px"
+                                        }}>{productLinked ? "✓" : "3"}</div>
+                                        <span style={{ flex: 1 }}>Configure & Link in Theme Editor</span>
+                                        {productLinked ? (
+                                            <span style={{ fontSize: "12px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px" }}>Linked</span>
+                                        ) : (
+                                            <span style={{ fontSize: "12px", background: "#fee2e2", color: "#991b1b", padding: "2px 8px", borderRadius: "12px" }}>Not Linked</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </s-card>
+
+                    <s-card>
+                        <div style={{ padding: "20px" }}>
+                            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "16px" }}>Step 1: Enable App Embed</h3>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "start" }}>
+                                <div>
+                                    <p style={{ marginBottom: "12px", lineHeight: "1.5" }}>
+                                        Open your <strong>Theme Editor</strong> and navigate to the <strong>App Embeds</strong> tab (icon on the left).
+                                        Switch on <strong>"Smart Gift Globals"</strong>.
+                                    </p>
+                                    <p style={{ marginBottom: "12px", lineHeight: "1.5" }}>
+                                        This injects the necessary scripts and styles for the gift widget to work on your product pages.
+                                    </p>
+                                    <div style={{ marginTop: "16px", padding: "12px", background: "#fffbeb", borderLeft: "4px solid #f59e0b", color: "#92400e" }}>
+                                        <strong>⚠️ Important:</strong> Without this enabled, the widget will not appear or function.
+                                    </div>
+                                    <div style={{ marginTop: "12px" }}>
+                                        {appEmbedEnabled ? (
+                                            <div style={{ padding: "8px", background: "#f0fdf4", color: "#15803d", borderRadius: "4px", fontSize: "14px" }}>
+                                                ✅ App Embed is Enabled <span style={{ fontSize: "12px", opacity: 0.8 }}>({activeThemeName})</span>
+                                            </div>
+                                        ) : (
+                                            <div style={{ padding: "8px", background: "#fef2f2", color: "#b91c1c", borderRadius: "4px", fontSize: "14px" }}>❌ App Embed is Disabled</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                                    <img src="/assets/images/app-embeds.png" alt="Enable App Embed" style={{ width: "100%", display: "block" }} />
+                                </div>
+                            </div>
+                        </div>
+                    </s-card>
+
+                    <s-card>
+                        <div style={{ padding: "20px" }}>
+                            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "16px" }}>Step 2: Create "Gift Service" Product</h3>
+                            <p style={{ marginBottom: "12px" }}>
+                                Shopify adds items to the cart, not abstract fees. You need a real product to represent the gift wrapping cost.
+                            </p>
+                            <ol style={{ paddingLeft: "24px", marginBottom: "16px", lineHeight: "1.6" }}>
+                                <li><strong>Go to Products</strong> in your Shopify Admin.</li>
+                                <li>Create a new product named <strong>"Gift Wrapping Service"</strong> (or similar).</li>
+                                <li>Set the <strong>Price</strong> (e.g., $5.00). This is what customers will be charged.</li>
+                                <li>(Optional) Set <strong>Inventory</strong> to "Do not track" so it never runs out.</li>
+                                <li>Upload a nice <strong>image</strong> (like a gift box icon). This will show in the cart.</li>
+                                <li><strong>Save</strong> the product.</li>
+                            </ol>
+                            {giftProductFound ? (
+                                <div style={{ padding: "12px", background: "#f0fdf4", borderRadius: "6px", color: "#15803d", fontWeight: "500" }}>
+                                    ✅ Great! We found <strong>{giftProduct.title}</strong> in your store. You can use this!
+                                    <br /><span style={{ fontSize: "13px", fontWeight: "normal" }}>Handle: {giftProduct.handle}</span>
+                                </div>
+                            ) : (
+                                <div style={{ padding: "12px", background: "#fef2f2", borderRadius: "6px", color: "#b91c1c" }}>
+                                    ❌ We couldn't find a product with "Gift" in the title. Please create one now.
+                                </div>
+                            )}
+                        </div>
+                    </s-card>
+
+                    <s-card>
+                        <div style={{ padding: "20px" }}>
+                            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "16px" }}>Step 3: Configuration Reference</h3>
+                            <p style={{ marginBottom: "20px" }}>
+                                In the Theme Editor &gt; App Embeds &gt; Smart Gift Globals, use these settings to customize the widget.
+                            </p>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", alignItems: "start" }}>
+                                {/* Left Column: Screenshots */}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                                    <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                                        <img src="/assets/images/settings-screenshot-1.png" alt="Settings Part 1" style={{ width: "100%", display: "block" }} />
+                                    </div>
+                                    <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                                        <img src="/assets/images/settings-screenshot-2.png" alt="Settings Part 2" style={{ width: "100%", display: "block" }} />
+                                    </div>
+                                </div>
+
+                                {/* Right Column: Explanations */}
+                                <div>
+                                    <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px" }}>1. Product & Toggle</h4>
+                                    <ul style={{ marginBottom: "24px", paddingLeft: "20px", fontSize: "14px", lineHeight: "1.6" }}>
+                                        <li><strong>Select Gift Wrap Product:</strong> <span style={{ color: "#ef4444" }}>*Critical*</span> Link the dummy product you created. This ensures the fee is added to the cart.</li>
+                                        <li><strong>Main Toggle Label:</strong> The text next to the checkbox (e.g., "Make this a gift").</li>
+                                        <li><strong>Total Price Label:</strong> Text shown before the total price calculation.</li>
+                                    </ul>
+
+                                    <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px" }}>2. Simple Gift Wrap</h4>
+                                    <ul style={{ marginBottom: "24px", paddingLeft: "20px", fontSize: "14px", lineHeight: "1.6" }}>
+                                        <li><strong>Simple Wrap Variant ID:</strong> (Optional) Specific variant ID if you offer a "Simple" wrapping option different from the base product.</li>
+                                    </ul>
+
+                                    <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px" }}>3. Digital Experience</h4>
+                                    <ul style={{ marginBottom: "24px", paddingLeft: "20px", fontSize: "14px", lineHeight: "1.6" }}>
+                                        <li><strong>Enable Digital Option:</strong> Toggle to show/hide the "Digital" tab.</li>
+                                        <li><strong>Digital Tab Title:</strong> Label for the tab (e.g., "Digital").</li>
+                                        <li><strong>Digital Variant ID:</strong> <span style={{ color: "#ef4444" }}>*Required if enabled*</span> Variant ID for digital gifts (can be same as base product).</li>
+                                        <li><strong>Format Selection:</strong> Placeholder text for format dropdown.</li>
+                                        <li><strong>Enable Video/Audio/Photo/Text:</strong> Toggles to control which media types customers can upload.</li>
+                                    </ul>
+
+                                    <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", borderBottom: "1px solid #e2e8f0", paddingBottom: "8px" }}>4. Printed Experience</h4>
+                                    <ul style={{ marginBottom: "24px", paddingLeft: "20px", fontSize: "14px", lineHeight: "1.6" }}>
+                                        <li><strong>Enable Printed Option:</strong> Toggle to show/hide the "Printed" tab.</li>
+                                        <li><strong>Printed Tab Title:</strong> Label for the tab (e.g., "Handwritten Card").</li>
+                                        <li><strong>Printed Hover Hint:</strong> Tooltip text explaining the printed option.</li>
+                                        <li><strong>Printed Variant ID:</strong> <span style={{ color: "#ef4444" }}>*Required if enabled*</span> Variant ID for printed cards.</li>
+                                        <li><strong>Enable Photo (Printed):</strong> Allow customers to upload a photo to be printed.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </s-card>
+
+                    {/* Debug Logs Section */}
+                    <s-card>
+                        <div style={{ padding: "20px" }}>
+                            <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "12px", color: "#64748b" }}>🛠️ Debug Verification Logs</h3>
+                            <pre style={{
+                                background: "#1e293b", color: "#f8fafc", padding: "16px", borderRadius: "8px",
+                                fontSize: "12px", overflowX: "auto", fontFamily: "monospace", lineHeight: "1.5"
+                            }}>
+                                {debugLogs?.join("\n")}
+                            </pre>
+                        </div>
+                    </s-card>
+                </s-layout-section>
+            </s-layout>
+            <div style={{ height: "40px" }}></div>
+        </s-page>
+    );
+}

@@ -1,0 +1,231 @@
+{% schema %}
+{
+  "name": "Smart gift",
+  "target": "head",
+  "settings": [
+    {
+      "type": "header",
+      "content": "1. Product & Toggle"
+    },
+    {
+      "type": "product",
+      "id": "gift_product",
+      "label": "Select Gift Wrap Product"
+    },
+    {
+      "type": "text",
+      "id": "toggle_text",
+      "label": "Main Toggle Label",
+      "default": "Make this a gift"
+    },
+    {
+      "type": "text",
+      "id": "text_total_label",
+      "label": "Total Price Label",
+      "default": "Total:"
+    },
+    {
+      "type": "header",
+      "content": "2. Simple Gift Wrap"
+    },
+    {
+      "type": "text",
+      "id": "simple_variant_id",
+      "label": "Simple Wrap Variant ID"
+    },
+    {
+      "type": "header",
+      "content": "3. Digital Experience"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_digital",
+      "label": "Enable Digital Option",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "text_digital_tab",
+      "label": "Digital Tab Title",
+      "default": "Digital"
+    },
+    {
+      "type": "text",
+      "id": "text_digital_hint",
+      "label": "Digital Hover Hint",
+      "default": "A QR code will be generated and attached to the order"
+    },
+    {
+      "type": "text",
+      "id": "digital_variant_id",
+      "label": "Digital Variant ID"
+    },
+    {
+      "type": "text",
+      "id": "text_choose_format",
+      "label": "Format Selection (Digital)",
+      "default": "Choose digital format"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_video_format",
+      "label": "Enable Video",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "text_record_video",
+      "label": "Video Button Label",
+      "default": "Record Video Message"
+    },
+    {
+      "type": "text",
+      "id": "text_upload_audio",
+      "label": "Audio Button Label",
+      "default": "Upload Audio"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_audio_format",
+      "label": "Enable Audio",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_url_format",
+      "label": "Enable URL",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_photo_format",
+      "label": "Enable Photo",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "text_upload_photo",
+      "label": "Photo Button Label",
+      "default": "Take Photo"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_text_format",
+      "label": "Enable Text (Digital)",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "4. Printed Experience"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_printed",
+      "label": "Enable Printed Option",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "text_printed_tab",
+      "label": "Printed Tab Title",
+      "default": "Printed Card"
+    },
+    {
+      "type": "text",
+      "id": "text_printed_hint",
+      "label": "Printed Hover Hint",
+      "default": "Your request will be printed"
+    },
+    {
+      "type": "text",
+      "id": "printed_variant_id",
+      "label": "Printed Variant ID"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_printed_photo",
+      "label": "Enable Photo (Printed)",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "text_message_placeholder",
+      "label": "Message Placeholder",
+      "default": "Write your message here..."
+    }
+  ]
+}
+{% endschema %}
+
+{%- liquid
+  assign gift_product_handle = block.settings.gift_product
+  assign gift_product_obj = all_products[gift_product_handle]
+
+  assign digital_id_str = block.settings.digital_variant_id | strip
+  assign printed_id_str = block.settings.printed_variant_id | strip
+  assign simple_id_str = block.settings.simple_variant_id | strip
+  
+  assign digital_price = 0
+  assign printed_price = 0
+  assign simple_price = 0
+
+  if gift_product_obj != blank
+    for variant in gift_product_obj.variants
+      assign variant_id_str = variant.id | append: ""
+      
+      if variant_id_str == digital_id_str
+        assign digital_price = variant.price
+      elsif variant_id_str == printed_id_str
+        assign printed_price = variant.price
+      elsif variant_id_str == simple_id_str
+        assign simple_price = variant.price
+      endif
+    endfor
+  endif
+-%}
+
+<script>
+  window.GiftWidgetConfig = {
+    labels: {
+      toggleText: {{ block.settings.toggle_text | json }},
+      totalLabel: {{ block.settings.text_total_label | json }},
+      digitalTab: {{ block.settings.text_digital_tab | json }},
+      printedTab: {{ block.settings.text_printed_tab | json }},
+      digitalHint: {{ block.settings.text_digital_hint | json }}, 
+      printedHint: {{ block.settings.text_printed_hint | json }},
+      chooseFormat: {{ block.settings.text_choose_format | json }},
+      recordVideo: {{ block.settings.text_record_video | json }},
+      uploadAudio: {{ block.settings.text_upload_audio | json }},
+      uploadPhoto: {{ block.settings.text_upload_photo | json }},
+      messagePlaceholder: {{ block.settings.text_message_placeholder | json }}
+    },
+    visibility: {
+      digital: {{ block.settings.show_digital | json }},
+      printed: {{ block.settings.show_printed | json }},
+      formats: {
+        video: {{ block.settings.enable_video_format | json }},
+        audio: {{ block.settings.enable_audio_format | json }},
+        url: {{ block.settings.enable_url_format | json }},
+        photo: {{ block.settings.enable_photo_format | json }},
+        text: {{ block.settings.enable_text_format | json }},
+        printed_photo: {{ block.settings.enable_printed_photo | json }}
+      }
+    },
+    digital: {
+      variantId: {{ digital_id_str | json }},
+      priceCents: {{ digital_price | json }}, 
+      priceText: "{{ digital_price | money }}"
+    },
+    printed: {
+      variantId: {{ printed_id_str | json }},
+      priceCents: {{ printed_price | json }},
+      priceText: "{{ printed_price | money }}"
+    },
+    simple: {
+      variantId: {{ simple_id_str | json }},
+      priceCents: {{ simple_price | json }},
+      priceText: "{{ simple_price | money }}"
+    }
+  };
+</script>
+<script src="{{ 'gift-cart-sync.js' | asset_url }}" defer="defer"></script>

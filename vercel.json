@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run build",
+  "rewrites": [
+    {
+      "source": "/v/(.*)",
+      "destination": "/api/view?file=$1"
+    },
+    {
+      "source": "/app_proxy/(.*)",
+      "destination": "/api/app_proxy/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.js"
+    }
+  ]
+}

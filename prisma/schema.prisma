@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Shop {
+  id                String   @id @default(uuid())
+  shopDomain        String   @unique
+  accessToken       String?  // encrypted
+  
+  // Billing fields
+  currentPlan       String   @default("free") // "free" | "pro" | "scale"
+  billingCycle      String?  // "monthly" | "annual"
+  subscriptionId    String?  // Shopify charge ID
+  trialEndsAt       DateTime?
+  isBetaUser        Boolean  @default(false) // Grandfathered users
+  
+  // Relationship
+  usage             Usage[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Usage {
+  id                String   @id @default(uuid())
+  shopId            String
+  shop              Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  
+  // Period tracking
+  billingMonth      String   // "2026-02" format for easy querying
+  
+  // Counters
+  mediaFilesCount   Int      @default(0)
+  giftOrdersCount   Int      @default(0)
+  
+  // Charges
+  usageFee          Float    @default(0) // Overage fees for the month
+  isPaid            Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@unique([shopId, billingMonth])
+  @@index([shopId])
+}
+
+model MediaFile {
+  id                String   @id @default(uuid())
+  shopId            String
+  
+  // File info
+  fileName          String
+  fileType          String   // "image" | "video" | "audio" | "document"
+  s3Key             String   @unique
+  fileSize          Int      // bytes
+  
+  // Order association
+  orderId           String?
+  giftRecipient     String?
+  
+  // Billing tracking
+  billingMonth      String   // "2026-02"
+  isCounted         Boolean  @default(false) // Prevent double-counting
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([shopId, billingMonth])
+  @@index([s3Key])
+}
