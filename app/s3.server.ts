@@ -1,8 +1,8 @@
 import { S3Client, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 
 // Hardcoded credentials for local dev as requested
-const AWS_ACCESS_KEY_ID = "AKIAYN2PY6B5V2KAHQ6F";
-const AWS_SECRET_ACCESS_KEY = "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";
+const AWS_ACCESS_KEY_ID = "AKIAYN2PY6B52HFYWWHP";
+const AWS_SECRET_ACCESS_KEY = "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";
 const AWS_REGION = "us-east-1";
 
 export const s3 = new S3Client({
@@ -11,6 +11,7 @@ export const s3 = new S3Client({
       accessKeyId: AWS_ACCESS_KEY_ID,
       secretAccessKey: AWS_SECRET_ACCESS_KEY,
   },
+  requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 export const BUCKET_NAME = "shopify-gift-app";

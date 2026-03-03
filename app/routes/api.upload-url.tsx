@@ -8,8 +8,8 @@ import { getShop, checkUploadLimit } from "../services/usage-tracker.server";
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || "us-east-1",
     credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B5V2KAHQ6F",
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B52HFYWWHP",
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
     },
     // Disable auto-checksum injection so presigned URLs work from the browser
     // Without this, SDK v3 injects x-amz-checksum-crc32 into the URL which the

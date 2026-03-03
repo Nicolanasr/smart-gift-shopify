@@ -3,8 +3,8 @@ const { S3Client, PutObjectCommand, CopyObjectCommand, HeadObjectCommand } = req
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || "us-east-1",
     credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B5V2KAHQ6F",
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B52HFYWWHP",
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
     },
 });
 
@@ -19,12 +19,12 @@ async function test() {
             Body: "hello world",
             ContentType: "text/plain"
         }));
-        
+
         console.log("Uploaded initial object.");
-        
+
         const head1 = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
         console.log("Initial ContentType:", head1.ContentType);
-        
+
         await s3Client.send(new CopyObjectCommand({
             Bucket: BUCKET_NAME,
             CopySource: `${BUCKET_NAME}/${key}`,
@@ -37,14 +37,14 @@ async function test() {
                 'has-caption': 'true'
             }
         }));
-        
+
         console.log("Copied object.");
-        
+
         const head2 = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
         console.log("Final ContentType:", head2.ContentType);
         console.log("Final Metadata:", head2.Metadata);
-        
-    } catch(e) {
+
+    } catch (e) {
         console.error("Test failed", e);
     }
 }

@@ -9,8 +9,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const client = new S3Client({
             region: "us-east-1",
             credentials: {
-                accessKeyId: "AKIAYN2PY6B5V2KAHQ6F",
-                secretAccessKey: "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",
+                accessKeyId: "AKIAYN2PY6B52HFYWWHP",
+                secretAccessKey: "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",
             },
         });
 
