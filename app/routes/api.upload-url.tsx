@@ -75,7 +75,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
         const publicUrl = `https://${BUCKET_NAME}.s3.amazonaws.com/${key}`;
-        const vercelUrl = `https://empowered-deal-app.vercel.app/v/${filename}`;
+        const vercelUrl = `https://smartgift.live/v/${filename}`;
 
         return Response.json({
             uploadUrl,

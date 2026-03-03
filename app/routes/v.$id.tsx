@@ -267,7 +267,7 @@ export default function Unboxing() {
                 </div>
 
                 <div style={styles.footer}>
-                    <p>Powered by <a href="https://empowered-deal-app.vercel.app/" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.8)', textDecoration: 'none' }}>Smart Gift</a></p>
+                    <p>Powered by <a href="https://smartgift.live/" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.8)', textDecoration: 'none' }}>Smart Gift</a></p>
                 </div>
             </div>
         </div>

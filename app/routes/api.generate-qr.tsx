@@ -233,7 +233,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 })
             );
 
-            fileUrl = `https://empowered-deal-app.vercel.app/v/${shortFilename}`;
+            fileUrl = `https://smartgift.live/v/${shortFilename}`;
             targetContent = fileUrl;
 
             if (shopDomain) {
@@ -374,7 +374,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             })
         );
 
-        const qrUrl = `https://empowered-deal-app.vercel.app/v/${qrFilename}`;
+        const qrUrl = `https://smartgift.live/v/${qrFilename}`;
 
         return Response.json({
             status: "success",

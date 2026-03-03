@@ -956,7 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // 2. Upload Logic
-        const apiBase = 'https://empowered-deal-app.vercel.app/api';
+        const apiBase = 'https://smartgift.live/api';
 
         if (file) {
             // === PRESIGNED URL FLOW (ALL FILES) ===
@@ -984,7 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fallback: Construct Vercel URL if missing
             if (!vercelUrl && publicUrl) {
                 const filename = publicUrl.split('/').pop();
-                const baseUrl = window.GIFT_WIDGET_API_BASE ? new URL(window.GIFT_WIDGET_API_BASE, window.location.origin).origin : 'https://empowered-deal-app.vercel.app';
+                const baseUrl = window.GIFT_WIDGET_API_BASE ? new URL(window.GIFT_WIDGET_API_BASE, window.location.origin).origin : 'https://smartgift.live';
                 vercelUrl = `${baseUrl}/v/${filename}`;
             }
 
@@ -996,7 +996,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // C. Generate QR pointing to that URL
             const qrPayload = {
                 url: vercelUrl || publicUrl,
-                caption: caption,
+                caption: caption || '',
                 shopDomain: shopDomain
             };
 
@@ -1021,7 +1021,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const body = {
                 url: url,
                 message: message,
-                caption: caption,
+                caption: caption || '',
                 shopDomain: shopDomain
             };
 

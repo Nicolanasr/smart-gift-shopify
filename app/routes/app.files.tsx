@@ -25,13 +25,13 @@ export const loader = async ({ request }: any) => {
         files = s3Files.map((f: any) => {
             const filename = f.Key.replace('uploads/', '');
             const fileId = filename.split('.')[0];
-            const vercelUrl = `https://empowered-deal-app.vercel.app/v/${filename}`;
+            const vercelUrl = `https://smartgift.live/v/${filename}`;
 
             const qrMatch = (qrCodes as any[]).find((q: any) => q && q.target === vercelUrl);
 
             const qrCodeUrl = qrMatch
-                ? `https://empowered-deal-app.vercel.app/v/${qrMatch.key.replace('qrcodes/', '')}`
-                : `https://empowered-deal-app.vercel.app/v/q_${fileId}.png`;
+                ? `https://smartgift.live/v/${qrMatch.key.replace('qrcodes/', '')}`
+                : `https://smartgift.live/v/q_${fileId}.png`;
 
             return {
                 key: f.Key,

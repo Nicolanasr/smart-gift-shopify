@@ -2,7 +2,7 @@
 
 client_id = "704492141af0e176d7a9e844e8882a1b"
 name = "Smart Gift"
-application_url = "https://empowered-deal-app.vercel.app"
+application_url = "https://smartgift.live"
 embedded = true
 
 [build]
@@ -25,16 +25,16 @@ api_version = "2024-10"
 
   [[webhooks.subscriptions]]
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
-  uri = "https://empowered-deal-app.vercel.app/webhooks"
+  uri = "https://smartgift.live/webhooks"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_products,read_orders,read_themes"
 
 [auth]
-redirect_urls = [ "https://empowered-deal-app.vercel.app" ]
+redirect_urls = [ "https://smartgift.live" ]
 
 [app_proxy]
-url = "https://empowered-deal-app.vercel.app"
+url = "https://smartgift.live"
 subpath = "gift-widget"
 prefix = "apps"
