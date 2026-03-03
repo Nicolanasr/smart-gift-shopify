@@ -179,14 +179,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     // Mode 3: Download Proxy (Streaming from S3)
+    // Watermark is burned permanently at upload time in api.generate-qr.tsx
+    // so we just stream the file directly here
     if (download === 'true') {
         try {
-            // Check metadata first to see if we need to watermark images on-download
-            const headCommand = new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key });
-            const metadata = await s3Client.send(headCommand);
-            const hasCaption = metadata.Metadata?.['has-caption'] === 'true';
-            const captionText = metadata.Metadata?.['caption-text'] || '';
-
             const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
             const response = await s3Client.send(command);
             const contentType = response.ContentType || 'application/octet-stream';
@@ -194,23 +190,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             const headers = new Headers();
             headers.set("Content-Type", contentType);
             headers.set("Content-Disposition", `attachment; filename="${file}"`);
+            headers.set("Access-Control-Allow-Origin", "*");
 
-            // If it's an image and has a caption, we MUST burn the caption in before downloading
-            if (hasCaption && captionText && contentType.startsWith('image/')) {
-                const streamToBuffer = async (stream: any) => {
-                    const chunks = [];
-                    for await (const chunk of stream) chunks.push(chunk);
-                    return Buffer.concat(chunks);
-                };
-
-                let fileBuffer = await streamToBuffer(response.Body);
-                fileBuffer = await addCaptionToImage(fileBuffer, captionText);
-                return new Response(fileBuffer as unknown as BodyInit, { headers });
-            }
-
-            // Normal Streaming Fallback for video, audio, or no-caption
-            // @ts-ignore - ReadableStream/Node Stream mismatch handled by Remix usually
-            return new Response(response.Body, { headers });
+            // Stream directly from S3 — watermark is already burned into image pixels
+            // @ts-ignore - ReadableStream/Node Stream mismatch handled by Remix
+            return new Response(response.Body as BodyInit, { headers });
         } catch (e) {
             console.error("Download Error:", e);
             return new Response("Error downloading file", { status: 500 });

@@ -39,7 +39,7 @@ model Shop {
   accessToken       String?  // encrypted
   
   // Billing fields
-  currentPlan       String   @default("free") // "free" | "pro" | "scale"
+  currentPlan       String   @default("free") // "free" | "pro-gifting" | "automation-plus"
   billingCycle      String?  // "monthly" | "annual"
   subscriptionId    String?  // Shopify charge ID
   trialEndsAt       DateTime?
