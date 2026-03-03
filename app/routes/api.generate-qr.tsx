@@ -266,7 +266,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             targetContent = url;
 
             // If it's one of our own uploaded files and we have a shop domain, track it!
-            if (shopDomain && url.includes('vercel.app/v/')) {
+            if (shopDomain && url.includes('smartgift.live/v/')) {
                 const urlObj = new URL(url);
                 const filename = urlObj.pathname.split('/').pop() || 'file';
                 const s3Key = `uploads/${filename}`;
@@ -302,7 +302,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
             // Update S3 metadata with the caption — fast and reliable.
             // The caption renders as HTML text in the unboxing page (v.$id.tsx).
-            if (finalUrlCaption && url.includes('vercel.app/v/')) {
+            if (finalUrlCaption && url.includes('smartgift.live/v/')) {
                 try {
                     const filename = url.split('/').pop();
                     const key = `uploads/${filename}`;

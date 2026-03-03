@@ -22,7 +22,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 // Look for our specific gift property keys that contain URLs
                 if (['Gift Link', '_Gift QR Code', '_Gift Image'].includes(prop.name) && prop.value) {
                     const urlStr = prop.value;
-                    // URLs usually look like: https://empowered-deal-app.vercel.app/v/shortId.ext or similar
                     try {
                         const urlObj = new URL(urlStr);
                         // Extract filename from the path
