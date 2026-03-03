@@ -53,7 +53,7 @@ export default function BillingPage() {
     const error = searchParams.get("error");
     const pending = searchParams.get("pending");
 
-    const handleUpgrade = async (plan: "pro" | "scale") => {
+    const handleUpgrade = async (plan: "pro-gifting" | "automation-plus") => {
         setIsUpgrading(true);
 
         try {
@@ -140,11 +140,11 @@ export default function BillingPage() {
                 "Priority email support",
                 "Advanced analytics",
             ],
-            current: usage.plan === "pro",
-            buttonText: usage.plan === "pro" ? "Current Plan" : "Upgrade to Pro",
-            buttonDisabled: usage.plan === "pro" || usage.isBetaUser,
+            current: usage.plan === "pro-gifting",
+            buttonText: usage.plan === "pro-gifting" ? "Current Plan" : "Upgrade to Pro",
+            buttonDisabled: usage.plan === "pro-gifting" || usage.isBetaUser,
             highlighted: true,
-            action: () => handleUpgrade("pro")
+            action: () => handleUpgrade("pro-gifting")
         },
         {
             name: "Automation Plus",
@@ -160,12 +160,12 @@ export default function BillingPage() {
                 "Phone support",
                 "Team accounts (5 users)",
             ],
-            current: usage.plan === "scale",
+            current: usage.plan === "automation-plus",
             buttonText: "Coming Soon",
             buttonDisabled: true,
             highlighted: false,
             comingSoon: true,
-            action: () => handleUpgrade("scale")
+            action: () => handleUpgrade("automation-plus")
         },
     ];
 
@@ -234,11 +234,17 @@ export default function BillingPage() {
                                     />
 
                                     {usage.overage > 0 && (
-                                        <Banner tone="info">
+                                        <Banner tone={usage.plan === "free" ? "warning" : "info"}>
                                             <p>
-                                                You've used <strong>{usage.overage} extra files</strong> this month.
-                                                {!usage.isBetaUser && (
-                                                    <> Overage fee: <strong>${usage.usageFee.toFixed(2)}</strong></>
+                                                {usage.plan === "free" ? (
+                                                    <>You have reached your <strong>Free plan limit</strong> of {usage.freeLimit} files. Please upgrade to continue uploading gifts.</>
+                                                ) : (
+                                                    <>
+                                                        You've used <strong>{usage.overage} extra files</strong> this month.
+                                                        {!usage.isBetaUser && (
+                                                            <> Overage fee: <strong>${usage.usageFee.toFixed(2)}</strong></>
+                                                        )}
+                                                    </>
                                                 )}
                                             </p>
                                         </Banner>

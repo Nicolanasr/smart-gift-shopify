@@ -2,7 +2,7 @@ import { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from 'crypto';
-import { getShop } from "../services/usage-tracker.server";
+import { getShop, checkUploadLimit } from "../services/usage-tracker.server";
 
 // Re-use existing ENV vars or fallback (though fallbacks are dangerous in prod)
 const s3Client = new S3Client({
@@ -11,6 +11,10 @@ const s3Client = new S3Client({
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B5V2KAHQ6F",
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
     },
+    // Disable auto-checksum injection so presigned URLs work from the browser
+    // Without this, SDK v3 injects x-amz-checksum-crc32 into the URL which the
+    // browser's XmlHttpRequest doesn't send, causing S3 to reject the PUT with 403
+    requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET || "shopify-gift-app";
@@ -50,8 +54,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: 'Missing contentType' }, { status: 400, headers });
         }
 
-        // Feature Gating: Video & Audio - REMOVED per user request
-        // All media types allowed on Free plan
+        if (shopDomain) {
+            const limitCheck = await checkUploadLimit(shopDomain);
+            if (!limitCheck.allowed) {
+                return Response.json({ error: limitCheck.reason }, { status: 403, headers });
+            }
+        }
 
         const shortId = crypto.randomBytes(4).toString('hex');
         const extension = fileType || 'bin';

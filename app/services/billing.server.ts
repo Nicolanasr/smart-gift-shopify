@@ -6,13 +6,13 @@ interface PlanConfig {
   trialDays: number;
 }
 
-const PLAN_CONFIGS: Record<"pro" | "scale", PlanConfig> = {
-  pro: {
+const PLAN_CONFIGS: Record<"pro-gifting" | "automation-plus", PlanConfig> = {
+  "pro-gifting": {
     name: "Pro Gifting",
     price: 14.99,
     trialDays: 14,
   },
-  scale: {
+  "automation-plus": {
     name: "Automation Plus",
     price: 79.00,
     trialDays: 14,
@@ -25,7 +25,7 @@ const PLAN_CONFIGS: Record<"pro" | "scale", PlanConfig> = {
 export async function createSubscription(
   admin: any,
   shopDomain: string,
-  plan: "pro" | "scale",
+  plan: "pro-gifting" | "automation-plus",
   appUrl: string
 ) {
   const config = PLAN_CONFIGS[plan];

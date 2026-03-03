@@ -8,9 +8,9 @@ import { createSubscription } from "../services/billing.server";
 export const action = async ({ request }: ActionFunctionArgs) => {
     const { session, admin } = await authenticate.admin(request);
     const formData = await request.formData();
-    const plan = formData.get("plan") as "pro" | "scale";
+    const plan = formData.get("plan") as "pro-gifting" | "automation-plus";
 
-    if (!plan || (plan !== "pro" && plan !== "scale")) {
+    if (!plan || (plan !== "pro-gifting" && plan !== "automation-plus")) {
         return Response.json({ error: "Invalid plan" }, { status: 400 });
     }
 

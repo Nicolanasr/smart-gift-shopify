@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
+import { checkUploadLimit } from "../services/usage-tracker.server";
 
 // Initialize S3 Client with hardcoded credentials
 // TODO: Move to environment variables when Shopify supports them
@@ -11,6 +12,7 @@ const s3Client = new S3Client({
         accessKeyId: "AKIAYN2PY6B5V2KAHQ6F",
         secretAccessKey: "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",
     },
+    requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 const BUCKET_NAME = "shopify-gift-app";
@@ -18,6 +20,16 @@ const AWS_REGION = "us-east-1";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
     try {
+        const urlObj = new URL(request.url);
+        const shopDomain = urlObj.searchParams.get("shop");
+
+        if (shopDomain) {
+            const limitCheck = await checkUploadLimit(shopDomain);
+            if (!limitCheck.allowed) {
+                return Response.json({ error: limitCheck.reason }, { status: 403 });
+            }
+        }
+
         const formData = await request.formData();
         const file = formData.get("file") as File;
         const urlInput = formData.get("url") as string;
@@ -28,8 +40,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         // Handle file upload to S3
         if (file?.size > 0) {
-            const fileExt = file.name.split('.').pop() || 'bin';
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
             const fileName = `uploads/${uuidv4()}.${fileExt}`;
+
+            // Determine file type category for validation
+            let fileTypeCategory: "image" | "video" | "audio" | "document" = "image";
+            if (['mp4', 'webm', 'mov', 'avi'].includes(fileExt)) {
+                fileTypeCategory = "video";
+            } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(fileExt)) {
+                fileTypeCategory = "audio";
+            } else if (['pdf', 'doc', 'docx', 'txt'].includes(fileExt)) {
+                fileTypeCategory = "document";
+            }
+
+            // Backend size validation to prevent malicious large uploads
+            const MAX_SIZES = {
+                image: 10485760,   // 10MB
+                video: 104857600,  // 100MB
+                audio: 20971520,   // 20MB
+                document: 10485760 // 10MB
+            };
+
+            if (file.size > MAX_SIZES[fileTypeCategory]) {
+                const limitMB = Math.round(MAX_SIZES[fileTypeCategory] / 1024 / 1024);
+                return Response.json({ error: `File exceeds maximum allowed size of ${limitMB}MB for ${fileTypeCategory}s` }, { status: 400 });
+            }
 
             const buffer = Buffer.from(await file.arrayBuffer());
 

@@ -220,7 +220,7 @@
 </div>
 
 <!-- Load the JS asset -->
-<script src="{{ 'gift-widget.js' | asset_url }}" defer="defer"></script>
+<script src="{{ 'gift-widget.js' | asset_url }}?v=71" defer="defer"></script>
 
 {% style %}
   /* Scoped styles mimicking Tailwind */
@@ -658,7 +658,8 @@
 {% endstyle %}
 
 <script>
-// Force Vercel URL override for upload endpoint
+// Call Vercel directly — bypasses Shopify App Proxy which changes URL on every dev session
+window.GIFT_WIDGET_API_BASE = 'https://empowered-deal-app.vercel.app/api';
 window.GIFT_WIDGET_UPLOAD_URL = 'https://empowered-deal-app.vercel.app/api/generate-qr';
 </script>
 

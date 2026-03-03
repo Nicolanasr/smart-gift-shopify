@@ -11,6 +11,7 @@ const s3Client = new S3Client({
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B5V2KAHQ6F",
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
     },
+    requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET || "shopify-gift-app";
@@ -59,42 +60,49 @@ async function addCaptionToImage(buffer: Buffer, text: string) {
             font = await loadFont(fontCDNUrl);
         }
 
-        const textHeight = Math.max(40, fontSize + 20);
+        // Calculate max width for wrapping text
+        const paddingLeftRight = 40;
+        const maxWidth = Math.max(image.bitmap.width - paddingLeftRight, 100);
+
+        // Measure true text height considering wraps
+        let textHeight = 0;
+        try {
+            const measureTextHeightFn = JimpModule.measureTextHeight || JimpClass.measureTextHeight;
+            // @ts-ignore
+            textHeight = measureTextHeightFn ? measureTextHeightFn(font, text, maxWidth) : Math.max(40, fontSize + 20);
+        } catch (e) {
+            textHeight = Math.max(40, fontSize + 20);
+        }
+
+        const paddingTop = 20;
+        const paddingBottom = 20;
         const newWidth = image.bitmap.width;
-        const newHeight = image.bitmap.height + textHeight;
+        const newHeight = image.bitmap.height + textHeight + paddingTop + paddingBottom;
 
-        let textWidth = 0;
-        try {
-            const measureTextFn = JimpModule.measureText || JimpClass.measureText;
-            // @ts-ignore
-            textWidth = measureTextFn ? measureTextFn(font, text) : (text.length * fontSize * 0.6);
-        } catch (e) {
-            textWidth = text.length * fontSize * 0.6;
-        }
+        // Create new image
+        // @ts-ignore
+        const JimpConstructor = JimpClass?.default || JimpClass;
+        // @ts-ignore
+        const newImage = new JimpConstructor({ width: newWidth, height: newHeight, color: 0xFFFFFFFF });
 
-        const centerX = Math.floor((newWidth - textWidth) / 2);
-        const centerY = image.bitmap.height + Math.floor((textHeight - fontSize) / 2);
+        // @ts-ignore
+        newImage.blit({ src: image, x: 0, y: 0 });
 
-        let newImage;
-        try {
-            // @ts-ignore
-            newImage = new JimpClass({ width: newWidth, height: newHeight, color: 0xFFFFFFFF });
-        } catch (e) {
-            // @ts-ignore
-            newImage = await JimpClass.create(newWidth, newHeight, 0xFFFFFFFF);
-        }
-
-        newImage.composite(image, 0, 0);
+        // @ts-ignore
         newImage.print({
-            font: font,
-            x: Math.max(0, centerX),
-            y: centerY,
-            // @ts-ignore
-            text: text
+            font,
+            x: Math.floor(paddingLeftRight / 2),
+            y: image.bitmap.height + paddingTop,
+            text: {
+                text: text,
+                alignmentX: 2, // HORIZONTAL_ALIGN_CENTER
+                alignmentY: 8  // VERTICAL_ALIGN_TOP
+            },
+            maxWidth: maxWidth
         });
 
         // @ts-ignore
-        return await newImage.getBuffer(JimpModule.MIME_PNG || 'image/png');
+        return await newImage.getBuffer('image/png');
     } catch (e) {
         console.error("Caption Error:", e);
         return buffer;
@@ -173,13 +181,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Mode 3: Download Proxy (Streaming from S3)
     if (download === 'true') {
         try {
+            // Check metadata first to see if we need to watermark images on-download
+            const headCommand = new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key });
+            const metadata = await s3Client.send(headCommand);
+            const hasCaption = metadata.Metadata?.['has-caption'] === 'true';
+            const captionText = metadata.Metadata?.['caption-text'] || '';
+
             const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
             const response = await s3Client.send(command);
+            const contentType = response.ContentType || 'application/octet-stream';
 
             const headers = new Headers();
-            if (response.ContentType) headers.set("Content-Type", response.ContentType);
+            headers.set("Content-Type", contentType);
             headers.set("Content-Disposition", `attachment; filename="${file}"`);
 
+            // If it's an image and has a caption, we MUST burn the caption in before downloading
+            if (hasCaption && captionText && contentType.startsWith('image/')) {
+                const streamToBuffer = async (stream: any) => {
+                    const chunks = [];
+                    for await (const chunk of stream) chunks.push(chunk);
+                    return Buffer.concat(chunks);
+                };
+
+                let fileBuffer = await streamToBuffer(response.Body);
+                fileBuffer = await addCaptionToImage(fileBuffer, captionText);
+                return new Response(fileBuffer as unknown as BodyInit, { headers });
+            }
+
+            // Normal Streaming Fallback for video, audio, or no-caption
             // @ts-ignore - ReadableStream/Node Stream mismatch handled by Remix usually
             return new Response(response.Body, { headers });
         } catch (e) {

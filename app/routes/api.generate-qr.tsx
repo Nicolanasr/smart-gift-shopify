@@ -3,7 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import QRCode from "qrcode";
 // @ts-ignore
 import * as JimpModule from "jimp";
-import { trackMediaUpload, getShop } from "../services/usage-tracker.server";
+import { trackMediaUpload, getShop, checkUploadLimit } from "../services/usage-tracker.server";
 import { authenticate } from "../shopify.server";
 
 // Initialize S3 Client
@@ -13,6 +13,7 @@ const s3Client = new S3Client({
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B5V2KAHQ6F",
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
     },
+    requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET || "shopify-gift-app";
@@ -86,40 +87,49 @@ async function addCaptionToImage(buffer: Buffer, text: string, mimeType: string)
             font = await loadFont(fontCDNUrl);
         }
 
-        const textHeight = Math.max(40, fontSize + 20);
-        const newWidth = image.bitmap.width;
-        const newHeight = image.bitmap.height + textHeight;
+        // Calculate max width for wrapping text
+        const paddingLeftRight = 40;
+        const maxWidth = Math.max(image.bitmap.width - paddingLeftRight, 100);
 
-        // Measure text
-        let textWidth = 0;
+        // Measure true text height considering wraps
+        let textHeight = 0;
         try {
-            const measureTextFn = JimpModule.measureText || JimpClass.measureText;
+            const measureTextHeightFn = JimpModule.measureTextHeight || JimpClass.measureTextHeight;
             // @ts-ignore
-            textWidth = measureTextFn ? measureTextFn(font, text) : (text.length * fontSize * 0.6);
+            textHeight = measureTextHeightFn ? measureTextHeightFn(font, text, maxWidth) : Math.max(40, fontSize + 20);
         } catch (e) {
-            textWidth = text.length * fontSize * 0.6;
+            textHeight = Math.max(40, fontSize + 20);
         }
 
-        const textX = Math.max(0, (newWidth - textWidth) / 2);
-        const textY = image.bitmap.height + ((textHeight - fontSize) / 2);
+        const paddingTop = 20;
+        const paddingBottom = 20;
+        const newWidth = image.bitmap.width;
+        const newHeight = image.bitmap.height + textHeight + paddingTop + paddingBottom;
 
         // Create new image
         // @ts-ignore
         const JimpConstructor = JimpClass?.default || JimpClass;
         // @ts-ignore
-        const newImage = new JimpConstructor(newWidth, newHeight, 0xFFFFFFFF);
+        const newImage = new JimpConstructor({ width: newWidth, height: newHeight, color: 0xFFFFFFFF });
 
         // @ts-ignore
-        newImage.blit(image, 0, 0);
+        newImage.blit({ src: image, x: 0, y: 0 });
 
         // @ts-ignore
-        newImage.print(font, textX, textY, {
-            // @ts-ignore
-            text: text
+        newImage.print({
+            font,
+            x: Math.floor(paddingLeftRight / 2),
+            y: image.bitmap.height + paddingTop,
+            text: {
+                text: text,
+                alignmentX: 2, // HORIZONTAL_ALIGN_CENTER
+                alignmentY: 8  // VERTICAL_ALIGN_TOP
+            },
+            maxWidth: maxWidth
         });
 
         // @ts-ignore
-        return await newImage.getBuffer(mimeType);
+        return await newImage.getBuffer('image/png');
 
     } catch (e) {
         console.error("Caption Error:", e);
@@ -149,6 +159,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         console.log('[USAGE TRACKING] Request received. Shop domain:', shopDomain);
 
+        if (shopDomain) {
+            const limitCheck = await checkUploadLimit(shopDomain);
+            if (!limitCheck.allowed) {
+                return Response.json({ error: limitCheck.reason }, { status: 403, headers: corsHeaders });
+            }
+        }
+
         // Feature Gating: Video & Audio - REMOVED per user request
         // All media types allowed on Free plan
 
@@ -156,9 +173,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let fileUrl = "";
         let contentId = "";
 
+        // Fetch plan to determine if we need to add a watermark
+        const shopRecord = shopDomain ? await getShop(shopDomain) : null;
+        const isFreePlan = shopRecord ? shopRecord.currentPlan === 'free' : true;
+        const watermark = "Powered by Smart Gift";
+
         if (file) {
             let buffer = Buffer.from(file, 'base64');
             const fileMime = `image/${fileType || 'jpeg'}`;
+
+            // Append Watermark to physical printed photo uploads if free tier
+            let finalCaption = caption || "";
+            if (isFreePlan && fileMime.startsWith('image/')) {
+                finalCaption = finalCaption ? `${finalCaption} - ${watermark}` : watermark;
+            }
+            console.log("Final caption:", finalCaption);
+            console.log("isFreePlan: ", isFreePlan);
+            console.log("caption: ", caption)
+
+            // Determine file type category for validation and tracking
+            let fileTypeCategory: "image" | "video" | "audio" | "document" = "image";
+            if (['mp4', 'webm', 'mov', 'avi'].includes(fileType)) {
+                fileTypeCategory = "video";
+            } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(fileType)) {
+                fileTypeCategory = "audio";
+            } else if (['pdf', 'doc', 'docx', 'txt'].includes(fileType)) {
+                fileTypeCategory = "document";
+            }
+
+            // Backend size validation to prevent malicious large uploads
+            const MAX_SIZES = {
+                image: 10485760,   // 10MB
+                video: 104857600,  // 100MB
+                audio: 20971520,   // 20MB
+                document: 10485760 // 10MB
+            };
+
+            if (buffer.length > MAX_SIZES[fileTypeCategory]) {
+                const limitMB = Math.round(MAX_SIZES[fileTypeCategory] / 1024 / 1024);
+                return Response.json({ error: `File exceeds maximum allowed size of ${limitMB}MB for ${fileTypeCategory}s` }, { status: 400, headers: corsHeaders });
+            }
 
             const shortId = generateShortId();
             contentId = shortId;
@@ -173,8 +227,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     ContentType: fileMime,
                     ACL: 'public-read',
                     Metadata: {
-                        'caption-text': caption || '',
-                        'has-caption': caption ? 'true' : 'false'
+                        'caption-text': finalCaption || '',
+                        'has-caption': finalCaption ? 'true' : 'false'
                     }
                 })
             );
@@ -241,23 +295,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 });
             }
 
-            if (caption) {
+            let finalUrlCaption = caption || "";
+            if (isFreePlan) {
+                finalUrlCaption = finalUrlCaption ? `${finalUrlCaption} - ${watermark}` : watermark;
+            }
+
+            if (finalUrlCaption) {
                 try {
                     const filename = url.split('/').pop();
                     const key = `uploads/${filename}`;
-                    const { CopyObjectCommand } = await import("@aws-sdk/client-s3");
+                    const { CopyObjectCommand, HeadObjectCommand: HeadCmd } = await import("@aws-sdk/client-s3");
+
+                    // Get the real ContentType from S3 before copying — without this it defaults to wrong type
+                    let realContentType = 'image/jpeg';
+                    try {
+                        const head = await s3Client.send(new HeadCmd({ Bucket: BUCKET_NAME, Key: key }));
+                        realContentType = head.ContentType || realContentType;
+                    } catch (_) { }
+
                     await s3Client.send(new CopyObjectCommand({
                         Bucket: BUCKET_NAME,
                         CopySource: `${BUCKET_NAME}/${key}`,
                         Key: key,
                         MetadataDirective: 'REPLACE',
-                        ContentType: fileType ? `image/${fileType}` : undefined,
+                        ContentType: realContentType,
                         ACL: 'public-read',
                         Metadata: {
-                            'caption-text': caption,
+                            'caption-text': finalUrlCaption,
                             'has-caption': 'true'
                         }
                     }));
+                    console.log('[WATERMARK] Updated metadata for direct upload:', key, 'caption:', finalUrlCaption);
                 } catch (metaErr) {
                     console.error("Failed to update metadata:", metaErr);
                 }
@@ -281,8 +349,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             errorCorrectionLevel: 'M'
         });
 
-        if (caption) {
-            qrBuffer = await addCaptionToImage(qrBuffer, caption, 'image/png');
+        let finalQrCaption = caption || "";
+        if (isFreePlan) {
+            finalQrCaption = finalQrCaption ? `${finalQrCaption} - ${watermark}` : watermark;
+        }
+
+        if (finalQrCaption) {
+            qrBuffer = await addCaptionToImage(qrBuffer, finalQrCaption, 'image/png');
         }
 
         await s3Client.send(
@@ -294,8 +367,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 ACL: 'public-read',
                 Metadata: {
                     'qr-target': targetContent,
-                    'has-caption': caption ? 'true' : 'false',
-                    'caption-text': caption || ''
+                    'has-caption': finalQrCaption ? 'true' : 'false',
+                    'caption-text': finalQrCaption || ''
                 }
             })
         );

@@ -112,10 +112,10 @@ export async function getCurrentUsage(shopDomain: string): Promise<UsageStats | 
     let freeLimit: number;
     
     switch (plan) {
-      case "pro":
+      case "pro-gifting":
         freeLimit = 100;
         break;
-      case "scale":
+      case "automation-plus":
         freeLimit = 1000;
         break;
       case "free":
@@ -125,7 +125,7 @@ export async function getCurrentUsage(shopDomain: string): Promise<UsageStats | 
     }
     
     const overage = Math.max(0, usage.mediaFilesCount - freeLimit);
-    const usageFee = overage * 0.10;
+    const usageFee = plan === "free" ? 0 : overage * 0.10;
     
     return {
       plan: shop.currentPlan,
@@ -140,6 +140,28 @@ export async function getCurrentUsage(shopDomain: string): Promise<UsageStats | 
     console.error("Error getting usage stats:", error);
     return null;
   }
+}
+
+/**
+ * Check if the shop is allowed to upload more files
+ */
+export async function checkUploadLimit(shopDomain: string): Promise<{ allowed: boolean, reason?: string }> {
+    const usage = await getCurrentUsage(shopDomain);
+    
+    if (!usage) {
+        // If we can't find usage, allow it but it will be created on the next track
+        return { allowed: true };
+    }
+
+    if (usage.plan === "free" && usage.mediaFilesUsed >= usage.freeLimit) {
+        return { 
+            allowed: false, 
+            reason: `You have reached your Free plan limit of ${usage.freeLimit} files this month. Please upgrade your plan.` 
+        };
+    }
+
+    // Pro plans allow unlimited uploads (they just get billed overages)
+    return { allowed: true };
 }
 
 /**
@@ -171,7 +193,7 @@ export async function getOrCreateShop(shopDomain: string) {
  */
 export async function updateShopPlan(
   shopDomain: string,
-  plan: "free" | "pro" | "scale",
+  plan: "free" | "pro-gifting" | "automation-plus",
   subscriptionId?: string
 ) {
   return await prisma.shop.update({
@@ -192,7 +214,7 @@ export async function markShopAsBeta(shopDomain: string) {
     where: { shopDomain },
     data: {
       isBetaUser: true,
-      currentPlan: "pro", // Give them pro features for free
+      currentPlan: "pro-gifting", // Give them pro features for free
       updatedAt: new Date(),
     },
   });

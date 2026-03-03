@@ -178,7 +178,7 @@ export default function Unboxing() {
                 <div style={styles.header}>
                     <div style={styles.icon}>🎁</div>
                     <h1 style={styles.title}>You have a Gift!</h1>
-                    <p style={styles.subtitle}>{captionText || 'Someone special sent you a message.'}</p>
+                    {captionText && <p style={styles.subtitle}>{captionText}</p>}
                 </div>
 
                 <div style={styles.content}>

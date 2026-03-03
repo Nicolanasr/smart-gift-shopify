@@ -25,8 +25,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
         if (subscription && subscription.status === "ACTIVE") {
             // Determine plan from subscription name
-            const plan = subscription.name.includes("Pro") ? "pro" :
-                subscription.name.includes("Automation") ? "scale" : "free";
+            const plan = subscription.name.includes("Pro") ? "pro-gifting" :
+                subscription.name.includes("Automation") ? "automation-plus" : "free";
 
             // Update the shop's plan in our database
             await updateShopPlan(shop, plan, subscription.id);

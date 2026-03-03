@@ -615,7 +615,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (uploadErr) {
                     hideProgress();
                     console.error("Gift Widget Upload Error:", uploadErr);
-                    alert("Failed to upload gift content. Please try again.");
+
+                    const errMsg = uploadErr.message || "Failed to upload gift content. Please try again.";
+                    alert(`An error has occurred. Please reach out to the site owner and provide this error message:\n\n"${errMsg}"`);
+
                     submitBtnCurrent.disabled = false;
                     submitBtnCurrent.innerText = originalText;
                     return;
@@ -785,11 +788,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 hideProgress();
                 const json = await res.json();
                 console.error("Gift Widget Error:", json);
-                alert("Error adding to cart: " + (json.description || "Unknown error"));
+
+                const errMsg = json.description || "Unknown cart error";
+                alert(`An error has occurred. Please reach out to the site owner and provide this error message:\n\n"Error adding to cart: ${errMsg}"`);
             }
         } catch (err) {
             hideProgress();
             console.error("Error adding bundle to cart", err);
+
+            const errMsg = err.message || "Unknown network error";
+            alert(`An error has occurred. Please reach out to the site owner and provide this error message:\n\n"Cart submission failed: ${errMsg}"`);
         } finally {
             submitBtnCurrent.disabled = false;
             // Note: We don't hide progress on success immediately to ensure smooth transition
@@ -948,7 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // 2. Upload Logic
-        const apiBase = window.GIFT_WIDGET_API_BASE || 'https://empowered-deal-app.vercel.app/api';
+        const apiBase = 'https://empowered-deal-app.vercel.app/api';
 
         if (file) {
             // === PRESIGNED URL FLOW (ALL FILES) ===
@@ -967,13 +975,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            if (!urlRes.ok) throw new Error('Failed to initiate upload');
+            if (!urlRes.ok) {
+                const errData = await urlRes.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to initiate upload');
+            }
             let { uploadUrl, publicUrl, vercelUrl } = await urlRes.json();
 
             // Fallback: Construct Vercel URL if missing
             if (!vercelUrl && publicUrl) {
                 const filename = publicUrl.split('/').pop();
-                const baseUrl = window.GIFT_WIDGET_API_BASE ? new URL(window.GIFT_WIDGET_API_BASE).origin : 'https://empowered-deal-app.vercel.app';
+                const baseUrl = window.GIFT_WIDGET_API_BASE ? new URL(window.GIFT_WIDGET_API_BASE, window.location.origin).origin : 'https://empowered-deal-app.vercel.app';
                 vercelUrl = `${baseUrl}/v/${filename}`;
             }
 
@@ -995,7 +1006,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(qrPayload)
             });
 
-            if (!qrRes.ok) throw new Error('Failed to generate QR');
+            if (!qrRes.ok) {
+                const errData = await qrRes.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to generate QR');
+            }
             return await qrRes.json();
 
         } else {
@@ -1021,7 +1035,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (onProgress) onProgress(100);
 
-            if (!qrRes.ok) throw new Error('Failed to generate QR');
+            if (!qrRes.ok) {
+                const errData = await qrRes.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to generate QR');
+            }
             return await qrRes.json();
         }
     }
