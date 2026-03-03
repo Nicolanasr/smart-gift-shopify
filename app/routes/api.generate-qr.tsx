@@ -300,64 +300,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 finalUrlCaption = finalUrlCaption ? `${finalUrlCaption} - ${watermark}` : watermark;
             }
 
-            // For free plan: permanently burn watermark into the photo pixels
-            // by downloading from S3, processing with Jimp, and re-uploading
+            // Update S3 metadata with the caption — fast and reliable.
+            // The caption renders as HTML text in the unboxing page (v.$id.tsx).
             if (finalUrlCaption && url.includes('vercel.app/v/')) {
                 try {
                     const filename = url.split('/').pop();
                     const key = `uploads/${filename}`;
-                    const { GetObjectCommand: GetCmd, HeadObjectCommand: HeadCmd } = await import("@aws-sdk/client-s3");
+                    const { CopyObjectCommand, HeadObjectCommand: HeadCmd } = await import("@aws-sdk/client-s3");
 
-                    // Get real ContentType
                     let realContentType = 'image/jpeg';
                     try {
                         const head = await s3Client.send(new HeadCmd({ Bucket: BUCKET_NAME, Key: key }));
                         realContentType = head.ContentType || realContentType;
                     } catch (_) { }
 
-                    // Only process images (not videos/audio)
-                    if (realContentType.startsWith('image/')) {
-                        // Download the original photo
-                        const getResp = await s3Client.send(new GetCmd({ Bucket: BUCKET_NAME, Key: key }));
-                        const chunks: Buffer[] = [];
-                        for await (const chunk of getResp.Body as AsyncIterable<Uint8Array>) {
-                            chunks.push(Buffer.from(chunk));
+                    await s3Client.send(new CopyObjectCommand({
+                        Bucket: BUCKET_NAME,
+                        CopySource: `${BUCKET_NAME}/${key}`,
+                        Key: key,
+                        MetadataDirective: 'REPLACE',
+                        ContentType: realContentType,
+                        ACL: 'public-read',
+                        Metadata: {
+                            'caption-text': finalUrlCaption,
+                            'has-caption': 'true'
                         }
-                        let imgBuffer = Buffer.concat(chunks);
-
-                        // Burn the caption into the image pixels
-                        const ext = filename?.split('.').pop()?.toLowerCase() || 'jpeg';
-                        const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}` as 'image/jpeg' | 'image/png';
-                        imgBuffer = await addCaptionToImage(imgBuffer, finalUrlCaption, mime);
-
-                        // Re-upload the watermarked version over the same key
-                        await s3Client.send(new PutObjectCommand({
-                            Bucket: BUCKET_NAME,
-                            Key: key,
-                            Body: imgBuffer,
-                            ContentType: realContentType,
-                            ACL: 'public-read',
-                            Metadata: {
-                                'caption-text': finalUrlCaption,
-                                'has-caption': 'true'
-                            }
-                        }));
-                        console.log('[WATERMARK] Burned watermark into photo:', key);
-                    } else {
-                        // For non-images (video/audio), just update metadata
-                        const { CopyObjectCommand } = await import("@aws-sdk/client-s3");
-                        await s3Client.send(new CopyObjectCommand({
-                            Bucket: BUCKET_NAME,
-                            CopySource: `${BUCKET_NAME}/${key}`,
-                            Key: key,
-                            MetadataDirective: 'REPLACE',
-                            ContentType: realContentType,
-                            ACL: 'public-read',
-                            Metadata: { 'caption-text': finalUrlCaption, 'has-caption': 'true' }
-                        }));
-                    }
+                    }));
+                    console.log('[WATERMARK] Caption metadata set for photo:', key, '→', finalUrlCaption);
                 } catch (metaErr) {
-                    console.error("Failed to process watermark for photo:", metaErr);
+                    console.error("Failed to update photo caption metadata:", metaErr);
                 }
             }
         } else if (message) {
