@@ -8,25 +8,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     try {
         // Step 1: Get real shop GID
-        const shopResponse = await admin.graphql(`#graphql query { shop { id } }`);
+        const shopResponse = await admin.graphql(
+            `#graphql
+            query {
+                shop { id }
+            }`
+        );
         const shopJson = await shopResponse.json();
         const shopGid = shopJson.data?.shop?.id;
         if (!shopGid) {
             return Response.json({ error: "Could not fetch shop ID" }, { status: 500 });
         }
 
-        // Step 2: Create the "Smart Gift Add-on" product with 3 variants
-        // Using the correct Shopify 2024-10 ProductInput format:
-        // - options: ["Option Name"] at product level
-        // - variants[].options: ["Value"] at variant level
+        // Step 2: Create the base product (Shopify auto-creates 1 default variant)
         const createProductResponse = await admin.graphql(
             `#graphql
-            mutation createGiftProduct($input: ProductInput!) {
-                productCreate(input: $input) {
+            mutation CreateGiftProduct {
+                productCreate(input: {
+                    title: "Smart Gift Add-on"
+                    vendor: "Smart Gift"
+                    status: DRAFT
+                    tags: ["smart-gift-internal"]
+                }) {
                     product {
                         id
                         handle
-                        variants(first: 10) {
+                        variants(first: 1) {
                             edges {
                                 node {
                                     id
@@ -37,31 +44,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     }
                     userErrors { field message }
                 }
-            }`,
-            {
-                variables: {
-                    input: {
-                        title: "Smart Gift Add-on",
-                        vendor: "Smart Gift",
-                        status: "DRAFT",
-                        tags: ["smart-gift-internal"],
-                        options: ["Gift Type"],
-                        variants: [
-                            { options: ["Simple Gift Wrap"], price: "0.00" },
-                            { options: ["Digital Gift"], price: "0.00" },
-                            { options: ["Printed Card"], price: "0.00" },
-                        ],
-                    },
-                },
-            }
+            }`
         );
 
         const productJson = await createProductResponse.json();
 
-        // Check top-level GraphQL errors first
         if (productJson.errors?.length > 0) {
             return Response.json(
-                { error: productJson.errors.map((e: any) => e.message).join(", ") },
+                { error: "GraphQL: " + productJson.errors.map((e: any) => e.message).join(", ") },
                 { status: 400 }
             );
         }
@@ -79,36 +69,67 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: "Product creation failed — no product returned" }, { status: 500 });
         }
 
-        // Extract numeric variant IDs from GIDs
-        const variants = product.variants.edges.map((e: any) => e.node);
-        const toNumericId = (gid: string) => gid.split("/").pop() || "";
-        const simpleVariantId = toNumericId(variants.find((v: any) => v.title === "Simple Gift Wrap")?.id || "");
-        const digitalVariantId = toNumericId(variants.find((v: any) => v.title === "Digital Gift")?.id || "");
-        const printedVariantId = toNumericId(variants.find((v: any) => v.title === "Printed Card")?.id || "");
+        const productGid = product.id;
+        const productHandle = product.handle;
 
-        // Step 3: Save to database
+        // The first (default) variant is our "Simple Gift Wrap"
+        const defaultVariantGid = product.variants.edges[0]?.node?.id || "";
+        const simpleVariantId = defaultVariantGid.split("/").pop() || "";
+
+        // Step 3: Add "Digital Gift" variant
+        const digitalResponse = await admin.graphql(
+            `#graphql
+            mutation CreateDigitalVariant($productId: ID!) {
+                productVariantCreate(input: {
+                    productId: $productId
+                    price: "0.00"
+                    options: ["Digital Gift"]
+                }) {
+                    productVariant { id title }
+                    userErrors { field message }
+                }
+            }`,
+            { variables: { productId: productGid } }
+        );
+        const digitalJson = await digitalResponse.json();
+        const digitalVariantGid = digitalJson.data?.productVariantCreate?.productVariant?.id || "";
+        const digitalVariantId = digitalVariantGid.split("/").pop() || "";
+
+        // Step 4: Add "Printed Card" variant
+        const printedResponse = await admin.graphql(
+            `#graphql
+            mutation CreatePrintedVariant($productId: ID!) {
+                productVariantCreate(input: {
+                    productId: $productId
+                    price: "0.00"
+                    options: ["Printed Card"]
+                }) {
+                    productVariant { id title }
+                    userErrors { field message }
+                }
+            }`,
+            { variables: { productId: productGid } }
+        );
+        const printedJson = await printedResponse.json();
+        const printedVariantGid = printedJson.data?.productVariantCreate?.productVariant?.id || "";
+        const printedVariantId = printedVariantGid.split("/").pop() || "";
+
+        // Step 5: Save to database
         await prisma.shop.update({
             where: { shopDomain },
             data: {
-                giftProductId: product.id,
+                giftProductId: productGid,
                 simpleVariantId,
                 digitalVariantId,
                 printedVariantId,
             } as any,
         });
 
-        // Step 4: Create metafield definitions with PUBLIC_READ so Liquid can access them
-        const metafieldDefs = [
-            { key: "gift_product_handle", type: "single_line_text_field" },
-            { key: "simple_variant_id", type: "single_line_text_field" },
-            { key: "digital_variant_id", type: "single_line_text_field" },
-            { key: "printed_variant_id", type: "single_line_text_field" },
-        ];
-
-        for (const def of metafieldDefs) {
+        // Step 6: Create metafield definitions with PUBLIC_READ so Liquid can access them
+        for (const key of ["gift_product_handle", "simple_variant_id", "digital_variant_id", "printed_variant_id"]) {
             await admin.graphql(
                 `#graphql
-                mutation createMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+                mutation CreateMetafieldDef($definition: MetafieldDefinitionInput!) {
                     metafieldDefinitionCreate(definition: $definition) {
                         createdDefinition { id }
                         userErrors { field message code }
@@ -117,24 +138,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 {
                     variables: {
                         definition: {
-                            name: def.key.replace(/_/g, " "),
+                            name: key.replace(/_/g, " "),
                             namespace: "smart_gift",
-                            key: def.key,
-                            type: def.type,
+                            key,
+                            type: "single_line_text_field",
                             ownerType: "SHOP",
                             access: { storefront: "PUBLIC_READ" },
                         },
                     },
                 }
-            ).catch(() => {
-                // Ignore — definition may already exist
-            });
+            ).catch(() => { /* already exists — ignore */ });
         }
 
-        // Step 5: Set metafield values on the shop
-        const metaFieldsSetResponse = await admin.graphql(
+        // Step 7: Set metafield values
+        const metafieldsResponse = await admin.graphql(
             `#graphql
-            mutation setMetafields($metafields: [MetafieldsSetInput!]!) {
+            mutation SetMetafields($metafields: [MetafieldsSetInput!]!) {
                 metafieldsSet(metafields: $metafields) {
                     metafields { id key value }
                     userErrors { field message }
@@ -143,7 +162,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             {
                 variables: {
                     metafields: [
-                        { namespace: "smart_gift", key: "gift_product_handle", type: "single_line_text_field", value: product.handle, ownerId: shopGid },
+                        { namespace: "smart_gift", key: "gift_product_handle", type: "single_line_text_field", value: productHandle, ownerId: shopGid },
                         { namespace: "smart_gift", key: "simple_variant_id", type: "single_line_text_field", value: simpleVariantId, ownerId: shopGid },
                         { namespace: "smart_gift", key: "digital_variant_id", type: "single_line_text_field", value: digitalVariantId, ownerId: shopGid },
                         { namespace: "smart_gift", key: "printed_variant_id", type: "single_line_text_field", value: printedVariantId, ownerId: shopGid },
@@ -151,16 +170,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 },
             }
         );
-
-        const metafieldsJson = await metaFieldsSetResponse.json();
-        const metafieldErrors = metafieldsJson.data?.metafieldsSet?.userErrors || [];
-        if (metafieldErrors.length > 0) {
-            console.warn("[auto-setup] Metafield errors (non-fatal):", metafieldErrors);
+        const metafieldsJson = await metafieldsResponse.json();
+        if (metafieldsJson.data?.metafieldsSet?.userErrors?.length > 0) {
+            console.warn("[auto-setup] Metafield errors:", metafieldsJson.data.metafieldsSet.userErrors);
         }
 
         return Response.json({
             success: true,
-            product: { id: product.id, handle: product.handle },
+            product: { id: productGid, handle: productHandle },
             variants: { simpleVariantId, digitalVariantId, printedVariantId },
         });
 
