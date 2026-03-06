@@ -7,16 +7,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopDomain = session.shop;
 
     try {
-        // Step 1: Get real shop GID first
+        // Step 1: Get real shop GID
         const shopResponse = await admin.graphql(`#graphql query { shop { id } }`);
         const shopJson = await shopResponse.json();
         const shopGid = shopJson.data?.shop?.id;
-
         if (!shopGid) {
             return Response.json({ error: "Could not fetch shop ID" }, { status: 500 });
         }
 
-        // Step 2: Create the Smart Gift Add-on product with 3 variants
+        // Step 2: Create the "Smart Gift Add-on" product with 3 variants
+        // Using the correct Shopify 2024-10 ProductInput format:
+        // - options: ["Option Name"] at product level
+        // - variants[].options: ["Value"] at variant level
         const createProductResponse = await admin.graphql(
             `#graphql
             mutation createGiftProduct($input: ProductInput!) {
@@ -43,10 +45,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         vendor: "Smart Gift",
                         status: "DRAFT",
                         tags: ["smart-gift-internal"],
+                        options: ["Gift Type"],
                         variants: [
-                            { optionValues: [{ name: "Simple Gift Wrap", optionName: "Gift Type" }], price: "0.00", inventoryManagement: null },
-                            { optionValues: [{ name: "Digital Gift", optionName: "Gift Type" }], price: "0.00", inventoryManagement: null },
-                            { optionValues: [{ name: "Printed Card", optionName: "Gift Type" }], price: "0.00", inventoryManagement: null },
+                            { options: ["Simple Gift Wrap"], price: "0.00" },
+                            { options: ["Digital Gift"], price: "0.00" },
+                            { options: ["Printed Card"], price: "0.00" },
                         ],
                     },
                 },
@@ -54,10 +57,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
 
         const productJson = await createProductResponse.json();
-        const userErrors = productJson.data?.productCreate?.userErrors || [];
 
+        // Check top-level GraphQL errors first
+        if (productJson.errors?.length > 0) {
+            return Response.json(
+                { error: productJson.errors.map((e: any) => e.message).join(", ") },
+                { status: 400 }
+            );
+        }
+
+        const userErrors = productJson.data?.productCreate?.userErrors || [];
         if (userErrors.length > 0) {
-            return Response.json({ error: userErrors.map((e: any) => e.message).join(", ") }, { status: 400 });
+            return Response.json(
+                { error: userErrors.map((e: any) => e.message).join(", ") },
+                { status: 400 }
+            );
         }
 
         const product = productJson.data?.productCreate?.product;
