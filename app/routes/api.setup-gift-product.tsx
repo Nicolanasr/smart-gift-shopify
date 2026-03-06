@@ -64,7 +64,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             }
         );
 
-        const productJson = await createProductResponse.json();
+        const productJson: any = await createProductResponse.json();
 
         if (productJson.errors?.length > 0) {
             return Response.json(
