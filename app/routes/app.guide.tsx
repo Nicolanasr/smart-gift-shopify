@@ -315,14 +315,14 @@ export default function Guide() {
                                 </div>
                             )}
 
-                            {/* Button */}
-                            {!shopSetup?.done && !createResult?.success && (
+                            {/* Button - show when not already configured OR always allow re-run */}
+                            {!createResult?.success && (
                                 <fetcher.Form method="post" action="/api/setup-gift-product">
                                     <button
                                         type="submit"
                                         disabled={isCreating}
                                         style={{
-                                            background: isCreating ? "#9ca3af" : "#6366f1",
+                                            background: isCreating ? "#9ca3af" : (shopSetup?.done ? "#6b7280" : "#6366f1"),
                                             color: "white",
                                             border: "none",
                                             borderRadius: "8px",
@@ -332,14 +332,11 @@ export default function Guide() {
                                             cursor: isCreating ? "not-allowed" : "pointer",
                                         }}
                                     >
-                                        {isCreating ? "⏳ Creating product..." : "🪄 Auto-Create Gift Product"}
+                                        {isCreating ? "⏳ Creating product..." : (shopSetup?.done ? "🔄 Re-run Setup" : "🪄 Auto-Create Gift Product")}
                                     </button>
                                 </fetcher.Form>
                             )}
 
-                            {shopSetup?.done && !createResult && (
-                                <div style={{ fontSize: "13px", color: "#6b7280" }}>Already configured. Re-run setup only if you need to reset variant IDs.</div>
-                            )}
                         </div>
                     </s-card>
 
