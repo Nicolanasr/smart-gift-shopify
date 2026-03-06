@@ -761,25 +761,67 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cartNotification = document.querySelector('cart-notification');
 
                 if (cartDrawer && cartDrawer.open) {
-                    // Create a specialized event for Dawn to update
-                    // Fetch the section to update the drawer content HTML
-                    const response = await fetch(`${window.Shopify.routes.root}?section_id=cart-drawer`);
-                    const text = await response.text();
-                    const html = new DOMParser().parseFromString(text, 'text/html');
+                    // Dawn/OS2.0 themes: try native renderContents (takes parsedState from cart/add.js)
+                    const parsedAddResult = await res.clone().json().catch(() => null);
 
-                    const selectors = ['cart-drawer-items', '.cart-drawer__footer'];
-                    selectors.forEach(selector => {
-                        const target = document.querySelector(selector);
-                        const source = html.querySelector(selector);
-                        if (target && source) target.replaceWith(source);
-                    });
+                    if (typeof cartDrawer.renderContents === 'function' && parsedAddResult) {
+                        // Dawn native path: renderContents handles section re-fetch internally
+                        try {
+                            cartDrawer.renderContents(parsedAddResult);
+                        } catch (_) {
+                            // renderContents may throw if sections aren't attached — fall through
+                        }
+                    }
 
-                    cartDrawer.open(document.querySelector('.header__icon--cart'));
+                    // Always fetch the section to get latest cart HTML regardless
+                    try {
+                        const sectionRes = await fetch(
+                            `${window.Shopify.routes.root}?sections=cart-drawer,cart-icon-bubble`
+                        );
+                        if (sectionRes.ok) {
+                            const sections = await sectionRes.json();
+                            const drawerSection = sections['cart-drawer'];
+                            if (drawerSection) {
+                                const html = new DOMParser().parseFromString(drawerSection, 'text/html');
+                                // Try broad list of selectors used by popular themes
+                                const selectors = [
+                                    'cart-drawer-items',
+                                    '.cart-drawer__footer',
+                                    '#CartDrawer-CartItems',
+                                    '#CartDrawer-Footer',
+                                    '.cart-drawer__scrollable',
+                                    '.cart__items',
+                                ];
+                                let updated = false;
+                                selectors.forEach(sel => {
+                                    const target = document.querySelector(sel);
+                                    const source = html.querySelector(sel);
+                                    if (target && source) { target.replaceWith(source); updated = true; }
+                                });
+                                // If no specific selectors matched, replace the cart-drawer inner HTML
+                                if (!updated) {
+                                    const freshDrawer = html.querySelector('cart-drawer');
+                                    if (freshDrawer) cartDrawer.innerHTML = freshDrawer.innerHTML;
+                                }
+                            }
+                            // Update cart bubble/icon count too
+                            const bubbleSection = sections['cart-icon-bubble'];
+                            if (bubbleSection) {
+                                const bubbleHtml = new DOMParser().parseFromString(bubbleSection, 'text/html');
+                                const bubble = document.getElementById('cart-icon-bubble');
+                                const freshBubble = bubbleHtml.getElementById('cart-icon-bubble');
+                                if (bubble && freshBubble) bubble.innerHTML = freshBubble.innerHTML;
+                            }
+                        }
+                    } catch (sectionErr) {
+                        console.warn('Gift Widget: Section fetch failed, opening drawer with current state', sectionErr);
+                    }
+
+                    cartDrawer.open(document.querySelector('.header__icon--cart, [aria-label="Cart"], [data-cart-toggle]'));
                     hideProgress();
                     submitBtnCurrent.innerText = originalText;
                 }
                 else if (cartNotification && cartNotification.open) {
-                    // Dawn Notification
                     cartNotification.open();
                     hideProgress();
                     submitBtnCurrent.innerText = originalText;
