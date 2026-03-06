@@ -209,22 +209,22 @@ export default function Guide() {
                                         )}
                                     </div>
 
-                                    {/* Step 2 Status (Interactive) */}
+                                    {/* Step 2 Status */}
                                     <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                         <div style={{
                                             width: "24px", height: "24px", borderRadius: "50%",
-                                            background: giftProductFound ? "#dcfce7" : "#e2e8f0",
-                                            color: giftProductFound ? "#166534" : "#64748b",
+                                            background: (shopSetup?.done || createResult?.success) ? "#dcfce7" : "#e2e8f0",
+                                            color: (shopSetup?.done || createResult?.success) ? "#166534" : "#64748b",
                                             display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px"
-                                        }}>{giftProductFound ? "✓" : "2"}</div>
+                                        }}>{(shopSetup?.done || createResult?.success) ? "✓" : "2"}</div>
                                         <div style={{ flex: 1 }}>
-                                            <span>Create a "Gift Service" Dummy Product</span>
-                                            {giftProductFound && <div style={{ fontSize: "12px", color: "#166534" }}>Found: {giftProduct.title} ({giftProduct.status})</div>}
+                                            <span>Auto-Create Gift Product</span>
+                                            {(shopSetup?.done || createResult?.success) && <div style={{ fontSize: "12px", color: "#166534" }}>Smart Gift Add-on created & configured</div>}
                                         </div>
-                                        {giftProductFound ? (
+                                        {(shopSetup?.done || createResult?.success) ? (
                                             <span style={{ fontSize: "12px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px" }}>Completed</span>
                                         ) : (
-                                            <span style={{ fontSize: "12px", background: "#fee2e2", color: "#991b1b", padding: "2px 8px", borderRadius: "12px" }}>Not Found</span>
+                                            <span style={{ fontSize: "12px", background: "#fee2e2", color: "#991b1b", padding: "2px 8px", borderRadius: "12px" }}>Action Required</span>
                                         )}
                                     </div>
 
@@ -232,15 +232,18 @@ export default function Guide() {
                                     <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                         <div style={{
                                             width: "24px", height: "24px", borderRadius: "50%",
-                                            background: productLinked ? "#dcfce7" : "#e2e8f0",
-                                            color: productLinked ? "#166534" : "#64748b",
+                                            background: appEmbedEnabled ? "#dcfce7" : "#e2e8f0",
+                                            color: appEmbedEnabled ? "#166534" : "#64748b",
                                             display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px"
-                                        }}>{productLinked ? "✓" : "3"}</div>
-                                        <span style={{ flex: 1 }}>Configure & Link in Theme Editor</span>
-                                        {productLinked ? (
-                                            <span style={{ fontSize: "12px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px" }}>Linked</span>
+                                        }}>{appEmbedEnabled ? "✓" : "3"}</div>
+                                        <div style={{ flex: 1 }}>
+                                            <span>Add Gift Widget Block to Product Pages</span>
+                                            <div style={{ fontSize: "12px", color: "#64748b" }}>In Theme Editor → product page → add "Gift Options Widget" block</div>
+                                        </div>
+                                        {appEmbedEnabled ? (
+                                            <span style={{ fontSize: "12px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "12px" }}>Ready</span>
                                         ) : (
-                                            <span style={{ fontSize: "12px", background: "#fee2e2", color: "#991b1b", padding: "2px 8px", borderRadius: "12px" }}>Not Linked</span>
+                                            <span style={{ fontSize: "12px", background: "#dbeafe", color: "#1e40af", padding: "2px 8px", borderRadius: "12px" }}>Enable App Embed First</span>
                                         )}
                                     </div>
                                 </div>

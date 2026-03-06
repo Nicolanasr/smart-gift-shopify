@@ -92,6 +92,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const simpleVariantId = toNumericId(firstVariant?.id || "");
 
         // Step 4: Always bulk-create Digital Gift and Printed Card variants explicitly
+        // Also update the auto-created first variant to disable inventory & shipping
+        const variantUpdateResponse = await admin.graphql(
+            `#graphql
+            mutation UpdateSimpleVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                    productVariants { id title }
+                    userErrors { field message }
+                }
+            }`,
+            {
+                variables: {
+                    productId: product.id,
+                    variants: [{
+                        id: firstVariant?.id,
+                        inventoryItem: { requiresShipping: false, tracked: false },
+                    }],
+                },
+            }
+        );
+        await variantUpdateResponse.json().catch(() => { });
+
         const bulkResponse = await admin.graphql(
             `#graphql
             mutation BulkCreateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
@@ -104,8 +125,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 variables: {
                     productId: product.id,
                     variants: [
-                        { optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }], price: "0.00" },
-                        { optionValues: [{ optionName: "Gift Type", name: "Printed Card" }], price: "0.00" },
+                        {
+                            optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }],
+                            price: "0.00",
+                            inventoryItem: { requiresShipping: false, tracked: false },
+                        },
+                        {
+                            optionValues: [{ optionName: "Gift Type", name: "Printed Card" }],
+                            price: "0.00",
+                            inventoryItem: { requiresShipping: false, tracked: false },
+                        },
                     ],
                 },
             }
