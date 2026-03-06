@@ -158,13 +158,27 @@
 {% endschema %}
 
 {%- liquid
-  assign gift_product_handle = block.settings.gift_product
+  assign gift_product_handle = shop.metafields.smart_gift.gift_product_handle.value
+  if gift_product_handle == blank
+    assign gift_product_handle = block.settings.gift_product
+  endif
   assign gift_product_obj = all_products[gift_product_handle]
 
-  assign digital_id_str = block.settings.digital_variant_id | strip
-  assign printed_id_str = block.settings.printed_variant_id | strip
-  assign simple_id_str = block.settings.simple_variant_id | strip
-  
+  assign digital_id_str = shop.metafields.smart_gift.digital_variant_id.value
+  if digital_id_str == blank
+    assign digital_id_str = block.settings.digital_variant_id | strip
+  endif
+
+  assign printed_id_str = shop.metafields.smart_gift.printed_variant_id.value
+  if printed_id_str == blank
+    assign printed_id_str = block.settings.printed_variant_id | strip
+  endif
+
+  assign simple_id_str = shop.metafields.smart_gift.simple_variant_id.value
+  if simple_id_str == blank
+    assign simple_id_str = block.settings.simple_variant_id | strip
+  endif
+
   assign digital_price = 0
   assign printed_price = 0
   assign simple_price = 0
@@ -172,7 +186,7 @@
   if gift_product_obj != blank
     for variant in gift_product_obj.variants
       assign variant_id_str = variant.id | append: ""
-      
+
       if variant_id_str == digital_id_str
         assign digital_price = variant.price
       elsif variant_id_str == printed_id_str

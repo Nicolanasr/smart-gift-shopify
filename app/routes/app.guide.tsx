@@ -1,8 +1,10 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
 
 export const loader = async ({ request }: any) => {
-    const { admin } = await authenticate.admin(request);
+    const { admin, session } = await authenticate.admin(request);
+    const shopDomain = session.shop;
 
     // Check 1: Gift Product
     const productResponse = await admin.graphql(
@@ -142,18 +144,35 @@ export const loader = async ({ request }: any) => {
         debugLogs.push(`Error: ${e}`);
     }
 
+    // Load gift product state from DB
+    let shopRecord: any = null;
+    try {
+        shopRecord = await prisma.shop.findUnique({ where: { shopDomain } });
+    } catch (e) {
+        console.error("Could not load shop record:", e);
+    }
+
     return {
         giftProductFound: !!giftProduct,
         giftProduct,
         appEmbedEnabled,
         productLinked,
         activeThemeName,
-        debugLogs
+        debugLogs,
+        shopSetup: shopRecord ? {
+            done: !!shopRecord.giftProductId,
+            simpleVariantId: shopRecord.simpleVariantId,
+            digitalVariantId: shopRecord.digitalVariantId,
+            printedVariantId: shopRecord.printedVariantId,
+        } : null,
     };
 };
 
 export default function Guide() {
-    const { giftProductFound, giftProduct, appEmbedEnabled, productLinked, activeThemeName, debugLogs } = useLoaderData<typeof loader>();
+    const { giftProductFound, giftProduct, appEmbedEnabled, productLinked, activeThemeName, debugLogs, shopSetup } = useLoaderData<typeof loader>();
+    const fetcher = useFetcher<any>();
+    const isCreating = fetcher.state !== "idle";
+    const createResult = fetcher.data;
 
     return (
         <s-page heading="Setup Guide & Onboarding">
@@ -263,27 +282,63 @@ export default function Guide() {
 
                     <s-card>
                         <div style={{ padding: "20px" }}>
-                            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "16px" }}>Step 2: Create "Gift Service" Product</h3>
-                            <p style={{ marginBottom: "12px" }}>
-                                Shopify adds items to the cart, not abstract fees. You need a real product to represent the gift wrapping cost.
+                            <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "8px" }}>Step 2: Auto-Create Gift Product</h3>
+                            <p style={{ marginBottom: "16px", color: "#4b5563", lineHeight: "1.5" }}>
+                                Click below to automatically create a <strong>"Smart Gift Add-on"</strong> product with 3 variants (Simple, Digital, Printed)
+                                in your store. Variant IDs will be configured automatically — no manual copy-pasting needed.
                             </p>
-                            <ol style={{ paddingLeft: "24px", marginBottom: "16px", lineHeight: "1.6" }}>
-                                <li><strong>Go to Products</strong> in your Shopify Admin.</li>
-                                <li>Create a new product named <strong>"Gift Wrapping Service"</strong> (or similar).</li>
-                                <li>Set the <strong>Price</strong> (e.g., $5.00). This is what customers will be charged.</li>
-                                <li>(Optional) Set <strong>Inventory</strong> to "Do not track" so it never runs out.</li>
-                                <li>Upload a nice <strong>image</strong> (like a gift box icon). This will show in the cart.</li>
-                                <li><strong>Save</strong> the product.</li>
-                            </ol>
-                            {giftProductFound ? (
-                                <div style={{ padding: "12px", background: "#f0fdf4", borderRadius: "6px", color: "#15803d", fontWeight: "500" }}>
-                                    ✅ Great! We found <strong>{giftProduct.title}</strong> in your store. You can use this!
-                                    <br /><span style={{ fontSize: "13px", fontWeight: "normal" }}>Handle: {giftProduct.handle}</span>
+
+                            {/* Already set up */}
+                            {(shopSetup?.done || createResult?.success) && (
+                                <div style={{ padding: "16px", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0", marginBottom: "16px" }}>
+                                    <div style={{ fontWeight: "600", color: "#15803d", marginBottom: "12px" }}>✅ Gift product configured!</div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                                        {[{ label: "Simple Variant ID", value: createResult?.variants?.simpleVariantId || shopSetup?.simpleVariantId },
+                                        { label: "Digital Variant ID", value: createResult?.variants?.digitalVariantId || shopSetup?.digitalVariantId },
+                                        { label: "Printed Variant ID", value: createResult?.variants?.printedVariantId || shopSetup?.printedVariantId }].map(({ label, value }) => (
+                                            <div key={label} style={{ background: "white", padding: "10px", borderRadius: "6px", border: "1px solid #d1fae5" }}>
+                                                <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>{label}</div>
+                                                <code style={{ fontSize: "13px", fontWeight: "600", color: "#111827" }}>{value || "—"}</code>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div style={{ marginTop: "12px", fontSize: "13px", color: "#166534" }}>
+                                        🎉 Metafields set on your shop — the widget will auto-detect these. No theme editor config needed!
+                                    </div>
                                 </div>
-                            ) : (
-                                <div style={{ padding: "12px", background: "#fef2f2", borderRadius: "6px", color: "#b91c1c" }}>
-                                    ❌ We couldn't find a product with "Gift" in the title. Please create one now.
+                            )}
+
+                            {/* Error */}
+                            {createResult?.error && (
+                                <div style={{ padding: "12px", background: "#fef2f2", borderRadius: "6px", color: "#b91c1c", marginBottom: "16px" }}>
+                                    ❌ {createResult.error}
                                 </div>
+                            )}
+
+                            {/* Button */}
+                            {!shopSetup?.done && !createResult?.success && (
+                                <fetcher.Form method="post" action="/api/setup-gift-product">
+                                    <button
+                                        type="submit"
+                                        disabled={isCreating}
+                                        style={{
+                                            background: isCreating ? "#9ca3af" : "#6366f1",
+                                            color: "white",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            padding: "12px 24px",
+                                            fontSize: "15px",
+                                            fontWeight: "600",
+                                            cursor: isCreating ? "not-allowed" : "pointer",
+                                        }}
+                                    >
+                                        {isCreating ? "⏳ Creating product..." : "🪄 Auto-Create Gift Product"}
+                                    </button>
+                                </fetcher.Form>
+                            )}
+
+                            {shopSetup?.done && !createResult && (
+                                <div style={{ fontSize: "13px", color: "#6b7280" }}>Already configured. Re-run setup only if you need to reset variant IDs.</div>
                             )}
                         </div>
                     </s-card>

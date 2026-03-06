@@ -45,9 +45,15 @@ model Shop {
   trialEndsAt       DateTime?
   isBetaUser        Boolean  @default(false) // Grandfathered users
   
+  // Gift Product (auto-created via Setup Guide)
+  giftProductId     String?  // Shopify GID e.g. gid://shopify/Product/123
+  simpleVariantId   String?  // Numeric variant ID string
+  digitalVariantId  String?  // Numeric variant ID string
+  printedVariantId  String?  // Numeric variant ID string
+
   // Relationship
   usage             Usage[]
-  
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
