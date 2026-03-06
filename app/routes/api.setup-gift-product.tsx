@@ -86,38 +86,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: "Product creation failed — no product returned" }, { status: 500 });
         }
 
-        // Step 3: If no variants were auto-created, use productVariantsBulkCreate
-        let variants = product.variants.edges.map((e: any) => e.node);
-
-        if (variants.length === 0) {
-            const bulkResponse = await admin.graphql(
-                `#graphql
-                mutation BulkCreateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                        productVariants { id title }
-                        userErrors { field message }
-                    }
-                }`,
-                {
-                    variables: {
-                        productId: product.id,
-                        variants: [
-                            { optionValues: [{ optionName: "Gift Type", name: "Simple Gift Wrap" }], price: "0.00" },
-                            { optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }], price: "0.00" },
-                            { optionValues: [{ optionName: "Gift Type", name: "Printed Card" }], price: "0.00" },
-                        ],
-                    },
-                }
-            );
-            const bulkJson = await bulkResponse.json();
-            variants = bulkJson.data?.productVariantsBulkCreate?.productVariants || [];
-        }
-
-        // Extract numeric variant IDs
+        // Step 3: Get the auto-created variant (first one = Simple Gift Wrap)
+        const firstVariant = product.variants.edges[0]?.node;
         const toNumericId = (gid: string) => gid.split("/").pop() || "";
-        const simpleVariantId = toNumericId(variants.find((v: any) => v.title === "Simple Gift Wrap")?.id || "");
-        const digitalVariantId = toNumericId(variants.find((v: any) => v.title === "Digital Gift")?.id || "");
-        const printedVariantId = toNumericId(variants.find((v: any) => v.title === "Printed Card")?.id || "");
+        const simpleVariantId = toNumericId(firstVariant?.id || "");
+
+        // Step 4: Always bulk-create Digital Gift and Printed Card variants explicitly
+        const bulkResponse = await admin.graphql(
+            `#graphql
+            mutation BulkCreateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                    productVariants { id title }
+                    userErrors { field message }
+                }
+            }`,
+            {
+                variables: {
+                    productId: product.id,
+                    variants: [
+                        { optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }], price: "0.00" },
+                        { optionValues: [{ optionName: "Gift Type", name: "Printed Card" }], price: "0.00" },
+                    ],
+                },
+            }
+        );
+        const bulkJson = await bulkResponse.json();
+        const newVariants = bulkJson.data?.productVariantsBulkCreate?.productVariants || [];
+        const digitalVariantId = toNumericId(newVariants.find((v: any) => v.title === "Digital Gift")?.id || newVariants[0]?.id || "");
+        const printedVariantId = toNumericId(newVariants.find((v: any) => v.title === "Printed Card")?.id || newVariants[1]?.id || "");
+
 
         // Step 4: Save to database (non-fatal if migration pending)
         try {
