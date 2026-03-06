@@ -305,7 +305,15 @@ export default function Guide() {
                                             </div>
                                         ))}
                                     </div>
-                                    <div style={{ marginTop: "12px", fontSize: "13px", color: "#166534" }}>
+                                    <div style={{ marginTop: "12px", padding: "10px 12px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "6px", fontSize: "13px", color: "#78350f" }}>
+                                        <strong>⚠️ Action required:</strong> The product was created as <strong>DRAFT</strong>. To make the widget work:
+                                        <ol style={{ margin: "6px 0 0 0", paddingLeft: "20px", lineHeight: "1.8" }}>
+                                            <li>Go to <strong>Products → Smart Gift Add-on</strong></li>
+                                            <li>Change status from <strong>Draft → Active</strong></li>
+                                            <li>Confirm <strong>Online Store</strong> is listed as a sales channel</li>
+                                        </ol>
+                                    </div>
+                                    <div style={{ marginTop: "8px", fontSize: "13px", color: "#166534" }}>
                                         🎉 Metafields set on your shop — the widget will auto-detect these. No theme editor config needed!
                                     </div>
                                 </div>

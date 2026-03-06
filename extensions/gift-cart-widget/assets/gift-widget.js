@@ -775,10 +775,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
 
                     cartDrawer.open(document.querySelector('.header__icon--cart'));
+                    hideProgress();
+                    submitBtnCurrent.innerText = originalText;
                 }
                 else if (cartNotification && cartNotification.open) {
                     // Dawn Notification
                     cartNotification.open();
+                    hideProgress();
+                    submitBtnCurrent.innerText = originalText;
                 }
                 else {
                     // Fallback: Reload to show updated state
@@ -800,7 +804,11 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`An error has occurred. Please reach out to the site owner and provide this error message:\n\n"Cart submission failed: ${errMsg}"`);
         } finally {
             submitBtnCurrent.disabled = false;
-            // Note: We don't hide progress on success immediately to ensure smooth transition
+            // Restore button text so it doesn't stay as "Generating Gift Code..."
+            // (progress is hidden separately in each success/error code path)
+            if (submitBtnCurrent.innerText !== originalText) {
+                submitBtnCurrent.innerText = originalText;
+            }
         }
     }
 
