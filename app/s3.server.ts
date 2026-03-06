@@ -1,9 +1,8 @@
 import { S3Client, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 
-// Hardcoded credentials for local dev as requested
-const AWS_ACCESS_KEY_ID = "AKIAYN2PY6B52HFYWWHP";
-const AWS_SECRET_ACCESS_KEY = "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";
-const AWS_REGION = "us-east-1";
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID!;
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY!;
+const AWS_REGION = process.env.AWS_REGION || "us-east-1";
 
 export const s3 = new S3Client({
   region: AWS_REGION,

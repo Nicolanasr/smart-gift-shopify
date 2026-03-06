@@ -10,8 +10,8 @@ import { authenticate } from "../shopify.server";
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || "us-east-1",
     credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B52HFYWWHP",
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     requestChecksumCalculation: 'WHEN_REQUIRED',
 });

@@ -4,12 +4,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import crypto from 'crypto';
 import { getShop, checkUploadLimit } from "../services/usage-tracker.server";
 
-// Re-use existing ENV vars or fallback (though fallbacks are dangerous in prod)
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || "us-east-1",
     credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "AKIAYN2PY6B52HFYWWHP",
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "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",
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     // Disable auto-checksum injection so presigned URLs work from the browser
     // Without this, SDK v3 injects x-amz-checksum-crc32 into the URL which the

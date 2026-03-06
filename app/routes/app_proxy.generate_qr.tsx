@@ -4,19 +4,16 @@ import QRCode from "qrcode";
 import { v4 as uuidv4 } from "uuid";
 import { checkUploadLimit } from "../services/usage-tracker.server";
 
-// Initialize S3 Client with hardcoded credentials
-// TODO: Move to environment variables when Shopify supports them
 const s3Client = new S3Client({
-    region: "us-east-1",
+    region: process.env.AWS_REGION || "us-east-1",
     credentials: {
-        accessKeyId: "AKIAYN2PY6B52HFYWWHP",
-        secretAccessKey: "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",
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
-const BUCKET_NAME = "shopify-gift-app";
-const AWS_REGION = "us-east-1";
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || "shopify-gift-app";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
     try {
@@ -77,7 +74,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 })
             );
 
-            fileUrl = `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${fileName}`;
+            fileUrl = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${fileName}`;
             targetContent = fileUrl;
         } else if (urlInput) {
             targetContent = urlInput;
@@ -103,7 +100,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             })
         );
 
-        const qrUrl = `https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${qrFilename}`;
+        const qrUrl = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${qrFilename}`;
 
         return Response.json({
             status: "success",
