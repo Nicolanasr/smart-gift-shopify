@@ -10,7 +10,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         // Step 1: Get real shop GID
         const shopResponse = await admin.graphql(
             `#graphql
-            query {
+            query GetShopId {
                 shop { id }
             }`
         );
@@ -20,20 +20,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: "Could not fetch shop ID" }, { status: 500 });
         }
 
-        // Step 2: Create the base product (Shopify auto-creates 1 default variant)
+        // Step 2: Create product with 3 variants — Shopify API 2025-10 syntax
+        // 2025-10 uses productCreate(product: ProductCreateInput!) instead of (input: ProductInput!)
+        // productOptions.values is [String!] not [{name: String!}]
+        // variants use optionValues: [{optionName, name}]
         const createProductResponse = await admin.graphql(
             `#graphql
-            mutation CreateGiftProduct {
-                productCreate(input: {
-                    title: "Smart Gift Add-on"
-                    vendor: "Smart Gift"
-                    status: DRAFT
-                    tags: ["smart-gift-internal"]
-                }) {
+            mutation CreateGiftProduct($product: ProductCreateInput!) {
+                productCreate(product: $product) {
                     product {
                         id
                         handle
-                        variants(first: 1) {
+                        variants(first: 10) {
                             edges {
                                 node {
                                     id
@@ -44,11 +42,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                     }
                     userErrors { field message }
                 }
-            }`
+            }`,
+            {
+                variables: {
+                    product: {
+                        title: "Smart Gift Add-on",
+                        vendor: "Smart Gift",
+                        status: "DRAFT",
+                        tags: ["smart-gift-internal"],
+                        productOptions: [
+                            {
+                                name: "Gift Type",
+                                values: ["Simple Gift Wrap", "Digital Gift", "Printed Card"],
+                            },
+                        ],
+                        variants: [
+                            {
+                                optionValues: [{ optionName: "Gift Type", name: "Simple Gift Wrap" }],
+                                price: "0.00",
+                            },
+                            {
+                                optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }],
+                                price: "0.00",
+                            },
+                            {
+                                optionValues: [{ optionName: "Gift Type", name: "Printed Card" }],
+                                price: "0.00",
+                            },
+                        ],
+                    },
+                },
+            }
         );
 
         const productJson = await createProductResponse.json();
 
+        // Check top-level GraphQL errors
         if (productJson.errors?.length > 0) {
             return Response.json(
                 { error: "GraphQL: " + productJson.errors.map((e: any) => e.message).join(", ") },
@@ -69,63 +98,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: "Product creation failed — no product returned" }, { status: 500 });
         }
 
-        const productGid = product.id;
-        const productHandle = product.handle;
+        // Extract numeric variant IDs
+        const variants = product.variants.edges.map((e: any) => e.node);
+        const toNumericId = (gid: string) => gid.split("/").pop() || "";
+        const simpleVariantId = toNumericId(variants.find((v: any) => v.title === "Simple Gift Wrap")?.id || "");
+        const digitalVariantId = toNumericId(variants.find((v: any) => v.title === "Digital Gift")?.id || "");
+        const printedVariantId = toNumericId(variants.find((v: any) => v.title === "Printed Card")?.id || "");
 
-        // The first (default) variant is our "Simple Gift Wrap"
-        const defaultVariantGid = product.variants.edges[0]?.node?.id || "";
-        const simpleVariantId = defaultVariantGid.split("/").pop() || "";
+        // Step 3: Save to database
+        try {
+            await prisma.shop.update({
+                where: { shopDomain },
+                data: {
+                    giftProductId: product.id,
+                    simpleVariantId,
+                    digitalVariantId,
+                    printedVariantId,
+                } as any,
+            });
+        } catch (dbErr: any) {
+            // Non-fatal: DB might not have new columns yet if migration hasn't run
+            console.warn("[auto-setup] DB update failed (migration pending?):", dbErr?.message);
+        }
 
-        // Step 3: Add "Digital Gift" variant
-        const digitalResponse = await admin.graphql(
-            `#graphql
-            mutation CreateDigitalVariant($productId: ID!) {
-                productVariantCreate(input: {
-                    productId: $productId
-                    price: "0.00"
-                    options: ["Digital Gift"]
-                }) {
-                    productVariant { id title }
-                    userErrors { field message }
-                }
-            }`,
-            { variables: { productId: productGid } }
-        );
-        const digitalJson = await digitalResponse.json();
-        const digitalVariantGid = digitalJson.data?.productVariantCreate?.productVariant?.id || "";
-        const digitalVariantId = digitalVariantGid.split("/").pop() || "";
-
-        // Step 4: Add "Printed Card" variant
-        const printedResponse = await admin.graphql(
-            `#graphql
-            mutation CreatePrintedVariant($productId: ID!) {
-                productVariantCreate(input: {
-                    productId: $productId
-                    price: "0.00"
-                    options: ["Printed Card"]
-                }) {
-                    productVariant { id title }
-                    userErrors { field message }
-                }
-            }`,
-            { variables: { productId: productGid } }
-        );
-        const printedJson = await printedResponse.json();
-        const printedVariantGid = printedJson.data?.productVariantCreate?.productVariant?.id || "";
-        const printedVariantId = printedVariantGid.split("/").pop() || "";
-
-        // Step 5: Save to database
-        await prisma.shop.update({
-            where: { shopDomain },
-            data: {
-                giftProductId: productGid,
-                simpleVariantId,
-                digitalVariantId,
-                printedVariantId,
-            } as any,
-        });
-
-        // Step 6: Create metafield definitions with PUBLIC_READ so Liquid can access them
+        // Step 4: Create metafield definitions with PUBLIC_READ
         for (const key of ["gift_product_handle", "simple_variant_id", "digital_variant_id", "printed_variant_id"]) {
             await admin.graphql(
                 `#graphql
@@ -150,8 +146,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             ).catch(() => { /* already exists — ignore */ });
         }
 
-        // Step 7: Set metafield values
-        const metafieldsResponse = await admin.graphql(
+        // Step 5: Set metafield values
+        await admin.graphql(
             `#graphql
             mutation SetMetafields($metafields: [MetafieldsSetInput!]!) {
                 metafieldsSet(metafields: $metafields) {
@@ -162,7 +158,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             {
                 variables: {
                     metafields: [
-                        { namespace: "smart_gift", key: "gift_product_handle", type: "single_line_text_field", value: productHandle, ownerId: shopGid },
+                        { namespace: "smart_gift", key: "gift_product_handle", type: "single_line_text_field", value: product.handle, ownerId: shopGid },
                         { namespace: "smart_gift", key: "simple_variant_id", type: "single_line_text_field", value: simpleVariantId, ownerId: shopGid },
                         { namespace: "smart_gift", key: "digital_variant_id", type: "single_line_text_field", value: digitalVariantId, ownerId: shopGid },
                         { namespace: "smart_gift", key: "printed_variant_id", type: "single_line_text_field", value: printedVariantId, ownerId: shopGid },
@@ -170,14 +166,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 },
             }
         );
-        const metafieldsJson = await metafieldsResponse.json();
-        if (metafieldsJson.data?.metafieldsSet?.userErrors?.length > 0) {
-            console.warn("[auto-setup] Metafield errors:", metafieldsJson.data.metafieldsSet.userErrors);
-        }
 
         return Response.json({
             success: true,
-            product: { id: productGid, handle: productHandle },
+            product: { id: product.id, handle: product.handle },
             variants: { simpleVariantId, digitalVariantId, printedVariantId },
         });
 
