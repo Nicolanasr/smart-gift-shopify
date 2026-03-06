@@ -20,10 +20,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: "Could not fetch shop ID" }, { status: 500 });
         }
 
-        // Step 2: Create product with 3 variants — Shopify API 2025-10 syntax
-        // 2025-10 uses productCreate(product: ProductCreateInput!) instead of (input: ProductInput!)
-        // productOptions.values is [String!] not [{name: String!}]
-        // variants use optionValues: [{optionName, name}]
+        // Step 2: Create product with productOptions (2025-10 API)
+        // - productOptions.values must be objects {name: "..."} not strings
+        // - NO variants in ProductCreateInput — Shopify auto-creates them from options
         const createProductResponse = await admin.graphql(
             `#graphql
             mutation CreateGiftProduct($product: ProductCreateInput!) {
@@ -53,21 +52,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         productOptions: [
                             {
                                 name: "Gift Type",
-                                values: ["Simple Gift Wrap", "Digital Gift", "Printed Card"],
-                            },
-                        ],
-                        variants: [
-                            {
-                                optionValues: [{ optionName: "Gift Type", name: "Simple Gift Wrap" }],
-                                price: "0.00",
-                            },
-                            {
-                                optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }],
-                                price: "0.00",
-                            },
-                            {
-                                optionValues: [{ optionName: "Gift Type", name: "Printed Card" }],
-                                price: "0.00",
+                                values: [
+                                    { name: "Simple Gift Wrap" },
+                                    { name: "Digital Gift" },
+                                    { name: "Printed Card" },
+                                ],
                             },
                         ],
                     },
@@ -77,7 +66,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         const productJson = await createProductResponse.json();
 
-        // Check top-level GraphQL errors
         if (productJson.errors?.length > 0) {
             return Response.json(
                 { error: "GraphQL: " + productJson.errors.map((e: any) => e.message).join(", ") },
@@ -98,14 +86,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return Response.json({ error: "Product creation failed — no product returned" }, { status: 500 });
         }
 
+        // Step 3: If no variants were auto-created, use productVariantsBulkCreate
+        let variants = product.variants.edges.map((e: any) => e.node);
+
+        if (variants.length === 0) {
+            const bulkResponse = await admin.graphql(
+                `#graphql
+                mutation BulkCreateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                        productVariants { id title }
+                        userErrors { field message }
+                    }
+                }`,
+                {
+                    variables: {
+                        productId: product.id,
+                        variants: [
+                            { optionValues: [{ optionName: "Gift Type", name: "Simple Gift Wrap" }], price: "0.00" },
+                            { optionValues: [{ optionName: "Gift Type", name: "Digital Gift" }], price: "0.00" },
+                            { optionValues: [{ optionName: "Gift Type", name: "Printed Card" }], price: "0.00" },
+                        ],
+                    },
+                }
+            );
+            const bulkJson = await bulkResponse.json();
+            variants = bulkJson.data?.productVariantsBulkCreate?.productVariants || [];
+        }
+
         // Extract numeric variant IDs
-        const variants = product.variants.edges.map((e: any) => e.node);
         const toNumericId = (gid: string) => gid.split("/").pop() || "";
         const simpleVariantId = toNumericId(variants.find((v: any) => v.title === "Simple Gift Wrap")?.id || "");
         const digitalVariantId = toNumericId(variants.find((v: any) => v.title === "Digital Gift")?.id || "");
         const printedVariantId = toNumericId(variants.find((v: any) => v.title === "Printed Card")?.id || "");
 
-        // Step 3: Save to database
+        // Step 4: Save to database (non-fatal if migration pending)
         try {
             await prisma.shop.update({
                 where: { shopDomain },
@@ -117,11 +131,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 } as any,
             });
         } catch (dbErr: any) {
-            // Non-fatal: DB might not have new columns yet if migration hasn't run
             console.warn("[auto-setup] DB update failed (migration pending?):", dbErr?.message);
         }
 
-        // Step 4: Create metafield definitions with PUBLIC_READ
+        // Step 5: Create metafield definitions with PUBLIC_READ
         for (const key of ["gift_product_handle", "simple_variant_id", "digital_variant_id", "printed_variant_id"]) {
             await admin.graphql(
                 `#graphql
@@ -143,10 +156,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         },
                     },
                 }
-            ).catch(() => { /* already exists — ignore */ });
+            ).catch(() => { /* already exists */ });
         }
 
-        // Step 5: Set metafield values
+        // Step 6: Set metafield values
         await admin.graphql(
             `#graphql
             mutation SetMetafields($metafields: [MetafieldsSetInput!]!) {
