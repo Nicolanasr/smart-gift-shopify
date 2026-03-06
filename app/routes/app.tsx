@@ -27,7 +27,7 @@ export default function App() {
                 <s-app-nav>
                     <s-link href="/app/overview">Overview</s-link>
                     <s-link href="/app/guide">Setup Guide</s-link>
-                    <s-link href="/app">Gift Orders</s-link>
+                    <s-link href="/app/orders">Gift Orders</s-link>
                     <s-link href="/app/files">Uploaded Files</s-link>
                     <s-link href="/app/billing">Billing</s-link>
                     <s-link href="/app/customize">Customize Page</s-link>

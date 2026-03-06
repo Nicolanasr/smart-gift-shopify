@@ -2,7 +2,7 @@
 
 client_id = "704492141af0e176d7a9e844e8882a1b"
 name = "Smart Gift"
-application_url = "https://smartgift.live"
+application_url = "https://smartgift.live/app/overview"
 embedded = true
 
 [build]
@@ -32,7 +32,7 @@ api_version = "2024-10"
 scopes = "write_products,read_orders,read_themes"
 
 [auth]
-redirect_urls = [ "https://smartgift.live" ]
+redirect_urls = [ "https://smartgift.live/auth/callback", "https://smartgift.live/auth/shopify/callback", "https://smartgift.live" ]
 
 [app_proxy]
 url = "https://smartgift.live"
